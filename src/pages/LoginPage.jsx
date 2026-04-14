@@ -1,38 +1,40 @@
-import { useContext, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AuthContext } from '../context/AuthContext.jsx'
+import { useContext, useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext.jsx";
 
 const initialForm = {
-  email: import.meta.env.VITE_ADMIN_EMAIL || 'admin@emarketing.local',
-  password: import.meta.env.VITE_ADMIN_PASSWORD || 'Admin@123456',
-}
+  email: import.meta.env.VITE_ADMIN_EMAIL || "",
+  password: import.meta.env.VITE_ADMIN_PASSWORD || "",
+};
 
 function LoginPage() {
-  const { admin, login } = useContext(AuthContext)
-  const navigate = useNavigate()
-  const location = useLocation()
-  const [form, setForm] = useState(initialForm)
-  const [error, setError] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { admin, login } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [form, setForm] = useState(initialForm);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (admin) {
-    return <Navigate to="/overview" replace />
+    return <Navigate to="/overview" replace />;
   }
 
   const handleSubmit = async (event) => {
-    event.preventDefault()
-    setError('')
-    setIsSubmitting(true)
+    event.preventDefault();
+    setError("");
+    setIsSubmitting(true);
 
     try {
-      await login(form)
-      navigate(location.state?.from?.pathname || '/overview', { replace: true })
+      await login(form);
+      navigate(location.state?.from?.pathname || "/overview", {
+        replace: true,
+      });
     } catch (requestError) {
-      setError(requestError.response?.data?.message || 'Unable to sign in')
+      setError(requestError.response?.data?.message || "Unable to sign in");
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-8">
@@ -45,16 +47,26 @@ function LoginPage() {
             Email marketing control center for campaign ops and admin workflows.
           </h1>
           <p className="mt-4 max-w-xl text-base text-ui-body">
-            This frontend is intentionally API-ready and isolated, so it can plug into a broader
-            platform later without reshaping the dashboard shell.
+            This frontend is intentionally API-ready and isolated, so it can
+            plug into a broader platform later without reshaping the dashboard
+            shell.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {[
-              ['Admin auth', 'JWT-based session flow with protected routes.'],
-              ['Dashboard shell', 'Reusable sidebar, topbar, and content cards.'],
-              ['Future APIs', 'Clean route boundaries for later feature integration.'],
+              ["Admin auth", "JWT-based session flow with protected routes."],
+              [
+                "Dashboard shell",
+                "Reusable sidebar, topbar, and content cards.",
+              ],
+              [
+                "Future APIs",
+                "Clean route boundaries for later feature integration.",
+              ],
             ].map(([title, text]) => (
-              <div key={title} className="rounded-[24px] bg-[linear-gradient(135deg,var(--accent-strong),var(--accent))] p-5 text-white shadow-[0_20px_36px_rgba(99,91,255,0.22)]">
+              <div
+                key={title}
+                className="rounded-[24px] bg-[linear-gradient(135deg,var(--accent-strong),var(--accent))] p-5 text-white shadow-[0_20px_36px_rgba(99,91,255,0.22)]"
+              >
                 <h2 className="text-lg font-semibold">{title}</h2>
                 <p className="mt-2 text-sm text-white/70">{text}</p>
               </div>
@@ -67,9 +79,12 @@ function LoginPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-ui-muted">
               Admin Login
             </p>
-            <h2 className="mt-3 text-3xl font-semibold text-ui-strong">Sign in</h2>
+            <h2 className="mt-3 text-3xl font-semibold text-ui-strong">
+              Sign in
+            </h2>
             <p className="mt-2 text-sm text-ui-body">
-              Use the admin email and password configured in the backend environment.
+              Use the admin email and password configured in the backend
+              environment.
             </p>
           </div>
 
@@ -80,21 +95,31 @@ function LoginPage() {
                 className="field"
                 type="email"
                 value={form.email}
-                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                placeholder="admin@example.com"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                placeholder="Admin email from backend env"
               />
             </label>
 
             <label className="block space-y-2">
-              <span className="text-sm font-medium text-ui-strong">Password</span>
+              <span className="text-sm font-medium text-ui-strong">
+                Password
+              </span>
               <input
                 className="field"
                 type="password"
                 value={form.password}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, password: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    password: event.target.value,
+                  }))
                 }
-                placeholder="Enter backend admin password"
+                placeholder="Admin password from backend env"
               />
             </label>
 
@@ -104,14 +129,18 @@ function LoginPage() {
               </div>
             ) : null}
 
-            <button type="submit" className="primary-button w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Signing in...' : 'Login'}
+            <button
+              type="submit"
+              className="primary-button w-full"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Signing in..." : "Login"}
             </button>
           </form>
         </section>
       </div>
     </div>
-  )
+  );
 }
 
-export default LoginPage
+export default LoginPage;
