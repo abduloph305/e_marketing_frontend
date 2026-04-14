@@ -1,0 +1,103 @@
+export const navigationItems = [
+  {
+    label: "Overview",
+    path: "/overview",
+    description: "A focused snapshot of campaign performance and list growth.",
+    group: "Core",
+    icon: "OV",
+    permission: "view_dashboard",
+  },
+  {
+    label: "Campaigns",
+    path: "/campaigns",
+    description:
+      "Plan, draft, and manage outbound email campaigns from one place.",
+    group: "Core",
+    icon: "CP",
+    permission: "manage_campaigns",
+  },
+  {
+    label: "Templates",
+    path: "/templates",
+    description:
+      "Store reusable email layouts and brand-approved content blocks.",
+    group: "Core",
+    icon: "TM",
+    permission: "edit_content",
+  },
+  {
+    label: "Email Builder",
+    path: "/email-builder",
+    description:
+      "Design modular emails with blocks, product cards, and live previews.",
+    group: "Core",
+    icon: "EB",
+    permission: "edit_content",
+  },
+  {
+    label: "Audience",
+    path: "/audience",
+    description: "Review contacts, list hygiene, and subscriber growth.",
+    group: "Audience",
+    icon: "AU",
+    permission: "manage_audience",
+  },
+  {
+    label: "Segments",
+    path: "/segments",
+    description:
+      "Define audience rules for sharper targeting and personalization.",
+    group: "Audience",
+    icon: "SG",
+    permission: "manage_audience",
+  },
+  {
+    label: "Suppressions",
+    path: "/suppressions",
+    description: "Review unsubscribed and suppressed recipients.",
+    group: "Audience",
+    icon: "SP",
+    permission: "manage_audience",
+  },
+  {
+    label: "Analytics",
+    path: "/analytics",
+    description: "Track opens, clicks, and conversion signals at a glance.",
+    group: "Insights",
+    icon: "AN",
+    permission: "view_analytics",
+  },
+  {
+    label: "Deliverability",
+    path: "/deliverability",
+    description: "Monitor sender health, bounce patterns, and inbox placement.",
+    group: "Insights",
+    icon: "DV",
+    permission: "view_analytics",
+  },
+  {
+    label: "Automations",
+    path: "/automations",
+    description: "Organize lifecycle journeys and trigger-based email flows.",
+    group: "Workspace",
+    icon: "AT",
+    permission: "manage_automations",
+  },
+  {
+    label: "Reports",
+    path: "/reports",
+    description: "Export performance summaries for stakeholders and teams.",
+    group: "Workspace",
+    icon: "RP",
+    permission: "view_reports",
+  },
+  {
+    label: "Settings",
+    path: "/settings",
+    description:
+      "Configure sender details, workspace controls, and platform preferences.",
+    group: "Workspace",
+    icon: "ST",
+    permission: "manage_settings",
+  },
+];
