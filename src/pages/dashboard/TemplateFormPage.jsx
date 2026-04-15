@@ -291,7 +291,7 @@ function TemplateFormPage() {
 
           <FormField
             label="Body text"
-            hint="Write the message in plain language. No HTML needed."
+            
           >
             <textarea
               className="field min-h-[170px] resize-y"
@@ -358,9 +358,7 @@ function TemplateFormPage() {
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-            <p className="text-sm text-slate-500">
-              This simple form generates HTML automatically.
-            </p>
+            
             <button
               type="submit"
               className="primary-button"
@@ -401,23 +399,7 @@ function TemplateFormPage() {
             </div>
           </section>
 
-          <section className="shell-card-strong p-6">
-            <p className="section-kicker">Merge tags</p>
-            <h3 className="section-title text-xl">Available variables</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Use these if you want to personalize the email.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {templateVariables.map((variable) => (
-                <span
-                  key={variable}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500"
-                >
-                  {variable}
-                </span>
-              ))}
-            </div>
-          </section>
+          
         </aside>
       </section>
     </div>

@@ -1,8 +1,9 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
+import Modal from "../../components/ui/Modal.jsx";
 import {
   campaignGoals,
   campaignStatuses,
@@ -51,6 +52,68 @@ const formatRecurrenceLabel = (interval, unit) => {
 
 const formatAudienceLabel = (segmentName) => segmentName || "All subscribers";
 
+const stripTags = (value = "") =>
+  String(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const parseTemplateHtml = (html = "") => {
+  if (!html) {
+    return {};
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const heading = doc.querySelector("h1, h2, h3")?.textContent?.trim() || "";
+    const body = doc.querySelector("p")?.textContent?.trim() || "";
+    const link = doc.querySelector("a");
+    const image = doc.querySelector("img");
+
+    return {
+      headline: heading || undefined,
+      bodyText: body || stripTags(doc.body.textContent || "") || undefined,
+      ctaText: link?.textContent?.trim() || undefined,
+      ctaUrl: link?.getAttribute("href") || undefined,
+      imageUrl: image?.getAttribute("src") || undefined,
+      imageAlt: image?.getAttribute("alt") || undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
+const buildCampaignPreview = (form, template) => {
+  const parsed = parseTemplateHtml(template?.htmlContent || "");
+  const design = template?.designJson || {};
+  const displayName = form.fromName?.trim() || "Your brand";
+  const subject = form.subject?.trim() || template?.subject || "Campaign subject";
+  const previewText =
+    form.previewText?.trim() || template?.previewText || "Preview text appears here";
+
+  return {
+    fromLine: `${displayName} <${form.fromEmail?.trim() || "sender@example.com"}>`,
+    subject,
+    previewText,
+    headline: design.headline || parsed.headline || subject,
+    bodyText:
+      design.bodyText ||
+      parsed.bodyText ||
+      "This is a live preview of the campaign email as it will look in an inbox.",
+    ctaText: design.ctaText || parsed.ctaText || "Shop now",
+    ctaUrl: design.ctaUrl || parsed.ctaUrl || "#",
+    imageUrl:
+      design.imageUrl ||
+      parsed.imageUrl ||
+      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+    imageAlt: design.imageAlt || parsed.imageAlt || "Campaign visual",
+    footerNote:
+      design.footerNote ||
+      "You are receiving this because you subscribed to updates.",
+  };
+};
+
 function CampaignFormPage() {
   const { id } = useParams();
   const location = useLocation();
@@ -69,12 +132,21 @@ function CampaignFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const broadcastPreset =
     new URLSearchParams(location.search).get("type") === "broadcast";
   const isBroadcastCampaign =
     form.type === "broadcast" || (!id && broadcastPreset);
   const audienceLabel = formatAudienceLabel(
     segments.find((segment) => segment._id === form.segmentId)?.name,
+  );
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template._id === form.templateId),
+    [form.templateId, templates],
+  );
+  const campaignPreview = useMemo(
+    () => buildCampaignPreview(form, selectedTemplate),
+    [form, selectedTemplate],
   );
 
   useEffect(() => {
@@ -247,6 +319,7 @@ function CampaignFormPage() {
         email: testEmail,
       });
       toast.success("Test email sent");
+      setIsTestModalOpen(false);
     } catch (requestError) {
       toast.error(
         requestError.response?.data?.message || "Unable to send test email",
@@ -287,12 +360,21 @@ function CampaignFormPage() {
               <span className="soft-pill">Lifecycle state managed</span>
             </div>
           </div>
-          <Link
-            to="/campaigns"
-            className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-          >
-            Back to campaigns
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to="/campaigns"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Back to campaigns
+            </Link>
+            <button
+              type="button"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+              onClick={() => setIsTestModalOpen(true)}
+            >
+              Test send
+            </button>
+          </div>
         </div>
       </section>
 
@@ -634,122 +716,126 @@ function CampaignFormPage() {
         </form>
 
         <div className="space-y-6 xl:sticky xl:top-6">
-          <section className="shell-card-strong p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-              Campaign summary
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-[#2f2b3d]">
-              Quick glance
-            </h3>
-            <div className="mt-5 space-y-4">
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  Audience
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#2f2b3d]">
-                  {audienceLabel}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  Send mode
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#2f2b3d]">
-                  {form.isRecurring
-                    ? `${formatRecurrenceLabel(form.recurrenceInterval, form.recurrenceUnit)}`
-                    : "One-time send"}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  First send time
-                </p>
-                <p className="mt-2 text-sm font-medium text-[#2f2b3d]">
-                  {form.scheduledAt
-                    ? formatLocalDateTimeInput(form.scheduledAt)
-                    : "Not scheduled yet"}
-                </p>
+          <section className="shell-card-strong overflow-hidden">
+      
+            <div className="bg-[#f6f2ff] px-5 py-5">
+              <div className="overflow-hidden rounded-[28px] border border-[#e8defd] bg-white shadow-[0_18px_40px_rgba(99,91,255,0.08)]">
+                <div className="border-b border-[#f1ebff] bg-[#faf7ff] px-5 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9a94b2]">
+                        Preview
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-[#2f2b3d]">
+                        {campaignPreview.subject}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#7b7592]">
+                      Draft
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs text-[#7b7592]">
+                    {campaignPreview.fromLine}
+                  </p>
+                  <p className="mt-1 text-xs text-[#8a93a6]">
+                    {campaignPreview.previewText}
+                  </p>
+                </div>
+
+                <div className="space-y-5 px-5 py-5">
+                  <div className="rounded-[22px] border border-dashed border-[#e8defd] bg-[#fcfbff] p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9a94b2]">
+                      Audience
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-[#2f2b3d]">
+                      {audienceLabel}
+                    </p>
+                    <p className="mt-1 text-xs text-[#8a93a6]">
+                      {form.isRecurring
+                        ? `Recurring send: ${formatRecurrenceLabel(form.recurrenceInterval, form.recurrenceUnit)}`
+                        : "One-time send"}
+                    </p>
+                  </div>
+
+                  <div className="overflow-hidden rounded-[24px] border border-[#ece6f8] bg-white">
+                    <div className="aspect-[16/9] bg-[#f8fafc]">
+                      <img
+                        src={campaignPreview.imageUrl}
+                        alt={campaignPreview.imageAlt}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="space-y-4 p-5">
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#9a94b2]">
+                          {selectedTemplate?.name || "Email content"}
+                        </p>
+                        <h4 className="text-2xl font-semibold leading-tight text-[#2f2b3d]">
+                          {campaignPreview.headline}
+                        </h4>
+                        <p className="text-sm leading-6 text-[#6e6787]">
+                          {campaignPreview.bodyText}
+                        </p>
+                      </div>
+
+                      <div>
+                        <a
+                          href={campaignPreview.ctaUrl}
+                          onClick={(event) => event.preventDefault()}
+                          className="inline-flex rounded-xl bg-[#635bff] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(99,91,255,0.22)]"
+                        >
+                          {campaignPreview.ctaText}
+                        </a>
+                      </div>
+
+                      <div className="rounded-2xl bg-[#faf7ff] p-4 text-xs leading-6 text-[#7b7592]">
+                        {campaignPreview.footerNote}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
 
-          <section className="shell-card-strong p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-              Test send
+        </div>
+      </div>
+
+      {isTestModalOpen ? (
+        <Modal
+          title="Send test email"
+          description="Send this campaign to a single recipient to verify the template and content before launch."
+          onClose={() => setIsTestModalOpen(false)}
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSendTest();
+            }}
+          >
+            <input
+              className="field"
+              type="email"
+              placeholder="test@example.com"
+              value={testEmail}
+              onChange={(event) => setTestEmail(event.target.value)}
+            />
+            <p className="text-xs text-[#9a94b2]">
+              New campaigns are saved automatically before the test is sent.
             </p>
-            <h3 className="mt-2 text-xl font-semibold text-[#2f2b3d]">
-              Send a preview email
-            </h3>
-            <p className="mt-2 text-sm text-[#6e6787]">
-              Use this to verify the template and content before launching the
-              broadcast.
-            </p>
-            <div className="mt-4 space-y-3">
-              <input
-                className="field"
-                type="email"
-                placeholder="test@example.com"
-                value={testEmail}
-                onChange={(event) => setTestEmail(event.target.value)}
-              />
+            <div className="flex justify-end">
               <button
-                type="button"
-                className="primary-button w-full"
+                type="submit"
+                className="primary-button"
                 disabled={isSendingTest || isSubmitting}
-                onClick={handleSendTest}
               >
                 {isSendingTest ? "Sending..." : "Send test email"}
               </button>
-              {!id ? (
-                <p className="text-xs text-[#9a94b2]">
-                  New campaigns are saved automatically before the test is sent.
-                </p>
-              ) : null}
             </div>
-          </section>
-
-          <section className="shell-card-strong p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-              Checklist
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-[#2f2b3d]">
-              Before you save
-            </h3>
-            <div className="mt-4 space-y-4 text-sm text-[#6e6787]">
-              <p>
-                1. Confirm the template matches the campaign goal and subject
-                line.
-              </p>
-              <p>
-                2. Use a segment only when targeting should be narrowed;
-                otherwise all subscribers are included.
-              </p>
-              <p>
-                3. Turn on recurring only when you want this campaign to repeat
-                automatically.
-              </p>
-            </div>
-          </section>
-
-          <section className="shell-card-strong p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-              Notes
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-[#2f2b3d]">
-              How it behaves
-            </h3>
-            <div className="mt-4 space-y-4 rounded-2xl bg-[#faf7ff] p-4 text-sm text-[#6e6787]">
-              <p>Recurring sends always re-check the audience at send time.</p>
-              <p>
-                Suppressed and unsubscribed users stay excluded automatically.
-              </p>
-              <p>
-                You can keep this campaign as a draft until everything is ready.
-              </p>
-            </div>
-          </section>
-        </div>
-      </div>
+          </form>
+        </Modal>
+      ) : null}
     </div>
   );
 }

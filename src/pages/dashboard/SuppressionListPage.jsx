@@ -98,11 +98,11 @@ function SuppressionListPage() {
   return (
     <div className="space-y-6">
       <section className="shell-card-strong p-6 md:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex flex-col  gap-6 xl:flex-row xl:items-end xl:justify-between">
           <PageHeader
-            eyebrow="Suppressions"
+           
             title="Suppression control center"
-            description="Manage unsubscribes, bounce-driven suppressions, complaint-based exclusions, and manual overrides from one operational list."
+           
           />
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-[24px] border border-slate-100 bg-slate-50 p-4">

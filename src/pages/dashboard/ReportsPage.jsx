@@ -190,9 +190,9 @@ function ReportsPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <PageHeader
-              eyebrow="Reports"
+              
               title="Reporting and exports center"
-              description="Review stakeholder-ready summaries, exportable tables, and range-based campaign reporting from one place."
+              
             />
             <div className="flex flex-wrap gap-2">
               <span className="soft-pill">

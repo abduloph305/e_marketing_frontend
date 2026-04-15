@@ -178,9 +178,9 @@ function CampaignsListPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <PageHeader
-              eyebrow="Campaigns"
-              title="Campaign command center"
-              description="Plan, stage, schedule, and monitor marketing sends from one operational workspace designed for the full campaign lifecycle."
+              
+              title="Campaign's center"
+              
             />
             <div className="flex flex-wrap gap-2">
               <span className="soft-pill">

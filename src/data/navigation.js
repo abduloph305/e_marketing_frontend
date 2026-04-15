@@ -10,8 +10,7 @@ export const navigationItems = [
   {
     label: "Campaigns",
     path: "/campaigns",
-    description:
-      "Plan, draft, and manage outbound email campaigns from one place.",
+    
     group: "Core",
     icon: "CP",
     permission: "manage_campaigns",

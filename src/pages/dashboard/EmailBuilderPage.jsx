@@ -77,15 +77,7 @@ const initialForm = () => ({
   subject: "",
   previewText: "",
   accentColor: "#6d28d9",
-  blocks: [
-    textBlock("eyebrow", "Campaign update"),
-    textBlock("heading", "Your latest update"),
-    textBlock("body", "Write your email copy here."),
-    imageBlock(),
-    buttonBlock(),
-    productBlock(),
-    productListBlock(),
-  ],
+  blocks: [],
   advancedHtml: "",
 });
 
@@ -116,7 +108,7 @@ const legacyToBlocks = (design = {}) => {
       },
     });
   if (design.footerNote) blocks.push(textBlock("body", design.footerNote));
-  return blocks.length ? blocks : initialForm().blocks;
+  return blocks.length ? blocks : [];
 };
 
 const mapTemplateToForm = (data) => {
@@ -135,6 +127,7 @@ const mapTemplateToForm = (data) => {
 const blockLabel = {
   eyebrow: "Eyebrow",
   heading: "Heading",
+  text: "Text",
   body: "Body text",
   image: "Image",
   button: "Button / CTA",
@@ -143,6 +136,18 @@ const blockLabel = {
   divider: "Divider",
   spacer: "Spacer",
 };
+
+const blockTypesInOrder = [
+  "eyebrow",
+  "heading",
+  "text",
+  "image",
+  "button",
+  "product",
+  "product_list",
+  "divider",
+  "spacer",
+];
 
 const blockHtml = (block, accent) => {
   const a = block.props.align || "left";
@@ -455,7 +460,7 @@ function EmailBuilderPage() {
       <section className="shell-card p-6 md:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <PageHeader
-            eyebrow="Email Builder"
+            
             title={id ? "Edit email builder" : "Create email builder"}
             description="Build reusable campaign emails with drag-and-drop blocks, product cards, and auto-priced product lists."
           />
@@ -489,7 +494,7 @@ function EmailBuilderPage() {
           />
 
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">
                   Block builder
@@ -499,18 +504,9 @@ function EmailBuilderPage() {
                   and dynamic product lists.
                 </p>
               </div>
+
               <div className="flex flex-wrap gap-2">
-                {[
-                  "eyebrow",
-                  "heading",
-                  "text",
-                  "image",
-                  "button",
-                  "product",
-                  "product_list",
-                  "divider",
-                  "spacer",
-                ].map((type) => (
+                {blockTypesInOrder.map((type) => (
                   <button
                     key={type}
                     type="button"
@@ -598,7 +594,7 @@ function EmailBuilderPage() {
                           }
                         />
                         <select
-                          className="field"
+                          className="field md:self-start md:h-[48px]"
                           value={block.props.align || "left"}
                           onChange={(e) =>
                             updateBlock(block.id, { align: e.target.value })
@@ -866,17 +862,22 @@ function EmailBuilderPage() {
         <section className="space-y-6">
           <article className="shell-card p-6">
             <h3 className="text-xl font-semibold text-slate-900">
-              Supported variables
+              Live preview
             </h3>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {templateVariables.map((variable) => (
-                <span
-                  key={variable}
-                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
-                >
-                  {variable}
-                </span>
-              ))}
+            <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-semibold text-slate-900">
+                {form.subject || "Subject preview"}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {form.previewText || "Preview text"}
+              </p>
+              <div className="mt-4 rounded-3xl border border-slate-100 bg-slate-50 p-5">
+                {form.blocks.map((block) => (
+                  <div key={block.id} className="mb-4 last:mb-0">
+                    {previewBlock(block, form.accentColor || "#6d28d9")}
+                  </div>
+                ))}
+              </div>
             </div>
           </article>
 
@@ -906,35 +907,6 @@ function EmailBuilderPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </article>
-
-          <article className="shell-card p-6">
-            <h3 className="text-xl font-semibold text-slate-900">
-              Live preview
-            </h3>
-            <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-900">
-                {form.subject || "Subject preview"}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {form.previewText || "Preview text"}
-              </p>
-              <div className="mt-4 rounded-3xl border border-slate-100 bg-slate-50 p-5">
-                {form.blocks.map((block) => (
-                  <div key={block.id} className="mb-4 last:mb-0">
-                    {previewBlock(block, form.accentColor || "#6d28d9")}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Generated HTML
-                </p>
-                <pre className="mt-3 max-h-[240px] overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-white p-3 text-xs text-slate-500">
-                  {generatedHtml}
-                </pre>
-              </div>
             </div>
           </article>
         </section>

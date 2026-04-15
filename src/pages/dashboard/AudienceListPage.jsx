@@ -28,7 +28,7 @@ const parseCsvPreview = (content = "") => {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (lines.length < 2) {
+  if (!lines.length) {
     return {
       headers: [],
       rows: [],
@@ -44,6 +44,79 @@ const parseCsvPreview = (content = "") => {
   const seenEmails = new Set();
   const invalidRows = [];
 
+  const isEmailOnlyHeader =
+    headers.length === 1 && headers[0].toLowerCase() === "email";
+  const isSingleColumnEmailList =
+    headers.length === 1 && lines[0].includes("@") && lines.length >= 1;
+
+  if (isSingleColumnEmailList) {
+    lines.forEach((line, index) => {
+      const email = line.trim().toLowerCase();
+      const isDuplicate = email && seenEmails.has(email);
+
+      if (email) {
+        seenEmails.add(email);
+      }
+
+      if (isDuplicate) {
+        duplicates.add(email);
+      }
+
+      if (!email) {
+        invalidRows.push(index + 1);
+      }
+
+      rows.push({
+        rowNumber: index + 1,
+        email,
+        isDuplicate,
+        isValid: Boolean(email),
+      });
+    });
+
+    return {
+      headers: ["email"],
+      rows,
+      duplicates: Array.from(duplicates),
+      invalidRows,
+      validCount: rows.filter((row) => row.isValid).length,
+    };
+  }
+
+  if (isEmailOnlyHeader) {
+    lines.slice(1).forEach((line, index) => {
+      const email = line.split(",")[0].trim().toLowerCase();
+      const isDuplicate = email && seenEmails.has(email);
+
+      if (email) {
+        seenEmails.add(email);
+      }
+
+      if (isDuplicate) {
+        duplicates.add(email);
+      }
+
+      if (!email) {
+        invalidRows.push(index + 2);
+      }
+
+      rows.push({
+        rowNumber: index + 2,
+        email,
+        isDuplicate,
+        isValid: Boolean(email),
+      });
+    });
+
+    return {
+      headers: ["email"],
+      rows,
+      duplicates: Array.from(duplicates),
+      invalidRows,
+      validCount: rows.filter((row) => row.isValid).length,
+    };
+  }
+
   lines.slice(1).forEach((line, index) => {
     const values = line.split(",").map((value) => value.trim());
     const row = headers.reduce((accumulator, header, headerIndex) => {
@@ -54,9 +127,7 @@ const parseCsvPreview = (content = "") => {
     const email = String(row.email || "")
       .trim()
       .toLowerCase();
-    const firstName = String(row.firstName || "").trim();
-    const lastName = String(row.lastName || "").trim();
-    const hasRequiredFields = firstName && lastName && email;
+    const hasRequiredFields = Boolean(email);
     const isDuplicate = email && seenEmails.has(email);
 
     if (email) {
@@ -147,6 +218,7 @@ function AudienceListPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkTags, setBulkTags] = useState("");
   const [csvContent, setCsvContent] = useState("");
+  const [csvFileName, setCsvFileName] = useState("");
   const [csvPreview, setCsvPreview] = useState({
     headers: [],
     rows: [],
@@ -154,6 +226,7 @@ function AudienceListPage() {
     invalidRows: [],
     validCount: 0,
   });
+  const [isPreviewExpanded, setIsPreviewExpanded] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -210,6 +283,30 @@ function AudienceListPage() {
     loadSubscribers(1);
   }, []);
 
+  useEffect(() => {
+    const refreshAudience = () => {
+      loadSubscribers(pagination.page || 1);
+    };
+
+    const handleFocus = () => refreshAudience();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshAudience();
+      }
+    };
+
+    const intervalId = window.setInterval(refreshAudience, 10000);
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [pagination.page]);
+
   const selectedSubscribers = useMemo(
     () =>
       subscribers.filter((subscriber) => selectedIds.includes(subscriber._id)),
@@ -222,7 +319,24 @@ function AudienceListPage() {
     }
 
     setCsvPreview(parseCsvPreview(csvContent));
+    setIsPreviewExpanded(false);
   }, [csvContent, isImportOpen]);
+
+  const handleCsvFileChange = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      setCsvFileName(file.name);
+      setCsvContent(content);
+    } catch {
+      toast.error("Unable to read the selected file");
+    }
+  };
 
   const handleStatusUpdate = async (subscriberId, status) => {
     try {
@@ -340,6 +454,7 @@ function AudienceListPage() {
       );
       setIsImportOpen(false);
       setCsvContent("");
+      setCsvFileName("");
       setCsvPreview({
         headers: [],
         rows: [],
@@ -347,6 +462,7 @@ function AudienceListPage() {
         invalidRows: [],
         validCount: 0,
       });
+      setIsPreviewExpanded(false);
       loadSubscribers(1);
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to import CSV");
@@ -793,9 +909,12 @@ function AudienceListPage() {
         <Modal
           title="Import subscribers from CSV"
           description="Paste a simple CSV with headers like firstName,lastName,email,source,tags,totalOrders,totalSpent."
+          className="!w-[min(96vw,88rem)] !max-w-[88rem] h-[min(90vh,800px)]"
+          bodyClassName="max-h-[80vh] overflow-hidden"
           onClose={() => {
             setIsImportOpen(false);
             setCsvContent("");
+            setCsvFileName("");
             setCsvPreview({
               headers: [],
               rows: [],
@@ -803,82 +922,134 @@ function AudienceListPage() {
               invalidRows: [],
               validCount: 0,
             });
+            setIsPreviewExpanded(false);
           }}
         >
-          <form className="space-y-4" onSubmit={handleImportCsv}>
-            <textarea
-              className="field min-h-[220px] resize-y"
-              value={csvContent}
-              onChange={(event) => setCsvContent(event.target.value)}
-              placeholder="firstName,lastName,email,source,tags&#10;Ava,Shah,ava@example.com,lead_magnet,VIP"
-            />
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  Rows
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
-                  {csvPreview.rows.length}
-                </p>
+          <form
+            className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] h-full"
+            onSubmit={handleImportCsv}
+          >
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold text-[#2f2b3d]">
+                  Upload CSV
+                </span>
+                <input
+                  className="field h-auto"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleCsvFileChange}
+                />
+              </label>
+              <textarea
+                className="field min-h-[160px] resize-y"
+                value={csvContent}
+                onChange={(event) => {
+                  setCsvContent(event.target.value);
+                  setCsvFileName("");
+                }}
+                placeholder="Paste emails one per line, or upload a CSV with an email column."
+              />
+              <p className="text-xs text-[#9a94b2]">
+                {csvFileName
+                  ? `Loaded file: ${csvFileName}`
+                  : "You can upload a CSV file exported from Excel, or paste emails directly."}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-[#faf7ff] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
+                    Rows
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
+                    {csvPreview.rows.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#faf7ff] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
+                    Valid
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
+                    {csvPreview.validCount}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#faf7ff] p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
+                    Duplicates
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
+                    {csvPreview.duplicates.length}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  Valid
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
-                  {csvPreview.validCount}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-[#faf7ff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                  Duplicates
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[#2f2b3d]">
-                  {csvPreview.duplicates.length}
-                </p>
+              <div className="flex justify-end">
+                <button type="submit" className="primary-button">
+                  Import CSV
+                </button>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-[#eee7fb] bg-white p-4">
+            <aside className="rounded-2xl border border-[#eee7fb] bg-white p-4 self-start xl:max-h-[60vh] xl:overflow-y-auto">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#9a94b2]">
-                Import review
+                Email preview
               </p>
               <div className="mt-3 space-y-3">
                 {csvPreview.rows.length ? (
-                  csvPreview.rows.slice(0, 5).map((row) => (
-                    <div
-                      key={row.rowNumber}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#faf7ff] p-3"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-[#2f2b3d]">
-                          Row {row.rowNumber}: {row.firstName} {row.lastName}
-                        </p>
-                        <p className="mt-1 text-xs text-[#6e6787]">
-                          {row.email}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {row.isValid ? (
-                          <span className="soft-pill">Valid</span>
-                        ) : (
-                          <span className="soft-pill">
-                            Missing required fields
-                          </span>
-                        )}
-                        {row.isDuplicate ? (
-                          <span className="soft-pill">Duplicate email</span>
-                        ) : null}
-                      </div>
+                  <>
+                    <div className="space-y-3">
+                      {(isPreviewExpanded
+                        ? csvPreview.rows
+                        : csvPreview.rows.slice(0, 4)
+                      ).map((row) => (
+                        <div
+                          key={row.rowNumber}
+                          className="flex items-center justify-between gap-3 rounded-2xl bg-[#faf7ff] p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#2f2b3d]">
+                              Row {row.rowNumber}
+                            </p>
+                            <p className="mt-1 truncate text-xs text-[#6e6787]">
+                              {row.email}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-nowrap gap-2">
+                            {row.isValid ? (
+                              <span className="soft-pill">Valid</span>
+                            ) : (
+                              <span className="soft-pill">
+                                Missing required fields
+                              </span>
+                            )}
+                            {row.isDuplicate ? (
+                              <span className="soft-pill">Duplicate email</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))
+
+                    {csvPreview.rows.length > 4 ? (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-[#635bff]"
+                        onClick={() =>
+                          setIsPreviewExpanded((current) => !current)
+                        }
+                      >
+                        {isPreviewExpanded
+                          ? "Show less"
+                          : `See more... `}
+                      </button>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="text-sm text-[#6e6787]">
                     Paste CSV content to see a quick import review.
                   </p>
                 )}
               </div>
-              {csvPreview.invalidRows.length || csvPreview.duplicates.length ? (
+              {isPreviewExpanded &&
+              (csvPreview.invalidRows.length || csvPreview.duplicates.length) ? (
                 <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#6e6787]">
                   {csvPreview.invalidRows.length ? (
                     <span className="soft-pill">
@@ -892,12 +1063,7 @@ function AudienceListPage() {
                   ) : null}
                 </div>
               ) : null}
-            </div>
-            <div className="flex justify-end">
-              <button type="submit" className="primary-button">
-                Import CSV
-              </button>
-            </div>
+            </aside>
           </form>
         </Modal>
       ) : null}

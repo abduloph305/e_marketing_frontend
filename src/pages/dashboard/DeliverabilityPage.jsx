@@ -129,22 +129,6 @@ function DeliverabilityPage() {
 
   return (
     <div className="space-y-6">
-      <section className="shell-card-strong p-6 md:p-8">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <PageHeader
-            eyebrow="Deliverability"
-            title="Operational deliverability center"
-            description="Track bounce pressure, complaint trends, suppression impact, and campaign-level sender quality from one operational surface."
-          />
-          <div className="min-w-0 rounded-[24px] border border-slate-100 bg-slate-50 p-4 text-sm text-slate-500 xl:max-w-md">
-            <p className="font-semibold text-slate-900">Future-ready telemetry</p>
-            <p className="mt-2">
-              Domain health and ISP stats are scaffolded so inbox placement diagnostics can plug in
-              cleanly when that data source is available.
-            </p>
-          </div>
-        </div>
-      </section>
 
       <section className="shell-card p-6">
         <DateRangeFilter
