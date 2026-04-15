@@ -69,13 +69,13 @@ function AutomationListPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <PageHeader
-              eyebrow="Automations"
+              
               title="Workflow automation studio"
-              description="Design event-driven email journeys with reusable steps, clean execution visibility, and a scalable processor foundation."
+              
             />
             <div className="flex flex-wrap gap-2">
               <span className="soft-pill">{pagination.total} workflows in workspace</span>
-              <span className="soft-pill">Future ecommerce hooks ready</span>
+              {/* <span className="soft-pill">Future ecommerce hooks ready</span> */}
             </div>
           </div>
           <Link to="/automations/new" className="primary-button">

@@ -34,7 +34,7 @@ function ChevronIcon({ open = false }) {
   )
 }
 
-function Sidebar() {
+function Sidebar({ expanded = true, onHoverChange = () => {} }) {
   const { admin, can, logout } = useContext(AuthContext)
   const toast = useContext(ToastContext)
   const visibleItems = navigationItems.filter((item) => can(item.permission))
@@ -52,6 +52,12 @@ function Sidebar() {
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [])
 
+  useEffect(() => {
+    if (!expanded) {
+      setOpenMenu(false)
+    }
+  }, [expanded])
+
   const groups = visibleItems.reduce((accumulator, item) => {
     const group = item.group || 'Workspace'
     accumulator[group] = accumulator[group] || []
@@ -60,24 +66,46 @@ function Sidebar() {
   }, {})
 
   return (
-    <aside className="sidebar-panel flex h-full min-h-0 flex-col overflow-hidden text-white">
-      <div ref={menuRef} className="relative border-b border-white/8 p-4">
+    <aside
+      className={`sidebar-panel flex h-full min-h-0 flex-col overflow-hidden text-white transition-[width] duration-200 ease-out ${
+        expanded ? 'lg:w-[296px]' : 'lg:w-[72px]'
+      } w-full`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
+    >
+      <div
+        ref={menuRef}
+        className={`relative border-b border-white/8 transition-all duration-200 ${
+          expanded ? 'p-4' : 'p-2 lg:p-3'
+        }`}
+      >
         <button
           type="button"
           onClick={() => setOpenMenu((current) => !current)}
-          className="w-full rounded-[24px] border border-white/8 bg-white/6 p-3 text-left backdrop-blur-sm transition hover:bg-white/10"
+          className={`w-full rounded-[24px] border border-white/8 bg-white/6 text-left backdrop-blur-sm transition hover:bg-white/10 ${
+            expanded ? 'p-3' : 'p-2 lg:p-2'
+          }`}
+          title={expanded ? undefined : roleLabels[admin?.role] || 'Super Admin'}
         >
-          <div className="flex items-center gap-3 rounded-[20px] border border-white/8 bg-white/6 px-3 py-3">
+          <div
+            className={`flex items-center rounded-[20px] border border-white/8 bg-white/6 transition-all duration-200 ${
+              expanded ? 'gap-3 px-3 py-3' : 'justify-center gap-0 px-0 py-3'
+            }`}
+          >
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[rgba(99,91,255,0.18)] text-sm font-semibold text-white">
               {admin?.name?.slice(0, 2).toUpperCase() || 'SA'}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-white">{roleLabels[admin?.role] || 'Super Admin'}</p>
-              <p className="truncate text-xs text-slate-300">{admin?.email || 'admin@emarketing.local'}</p>
-            </div>
-            <div className="text-slate-400">
-              <ChevronIcon open={openMenu} />
-            </div>
+            {expanded ? (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{roleLabels[admin?.role] || 'Super Admin'}</p>
+                  <p className="truncate text-xs text-slate-300">{admin?.email || 'admin@emarketing.local'}</p>
+                </div>
+                <div className="text-slate-400">
+                  <ChevronIcon open={openMenu} />
+                </div>
+              </>
+            ) : null}
           </div>
         </button>
 
@@ -127,26 +155,39 @@ function Sidebar() {
         ) : null}
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-4">
+      <nav
+        className={`scrollbar-none min-h-0 flex-1 overflow-y-auto ${
+          expanded ? 'space-y-5 px-3 py-4' : 'space-y-3 px-2 py-3 lg:px-2'
+        }`}
+      >
         {Object.entries(groups).map(([group, items]) => (
           <div key={group}>
-            <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              {group}
-            </p>
+            {expanded ? (
+              <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                {group}
+              </p>
+            ) : (
+              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                {group.slice(0, 2)}
+              </p>
+            )}
             <div className="space-y-2">
               {items.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
+                  className={({ isActive }) =>
+                    `nav-link ${isActive ? 'nav-link-active' : ''} ${expanded ? '' : 'justify-center px-3'}`
+                  }
+                  title={expanded ? undefined : item.label}
                 >
                   <span className="flex items-center gap-3">
                     <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/8 text-xs font-semibold text-inherit">
                       {item.icon || '--'}
                     </span>
-                    <span>{item.label}</span>
+                    {expanded ? <span>{item.label}</span> : null}
                   </span>
-                  <span className="text-xs opacity-60">{'>'}</span>
+                  {expanded ? <span className="text-xs opacity-60">{'>'}</span> : null}
                 </NavLink>
               ))}
             </div>

@@ -352,12 +352,12 @@ function AutomationFormPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <PageHeader
-              eyebrow="Automations"
+              
               title={id ? 'Edit workflow' : 'Build a workflow'}
-              description="Create a clean automation sequence with ordered steps, trigger controls, and execution-ready structure for future event-driven sending."
+              
             />
             <div className="flex flex-wrap gap-2">
-              <span className="soft-pill">Visual step builder</span>
+              {/* <span className="soft-pill">Visual step builder</span> */}
               <span className="soft-pill">{meta.ecommerceHooks?.message}</span>
             </div>
           </div>
