@@ -1,9 +1,14 @@
 import { useContext, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { templateVariables } from "../../data/campaigns.js";
+import {
+  applyTemplatePreset,
+  buildTemplateHtml,
+  getTemplatePreset,
+} from "../../data/templatePresets.js";
 import { api } from "../../lib/api.js";
 
 const createInitialForm = () => ({
@@ -86,45 +91,11 @@ const mapTemplateToForm = (data) => {
   };
 };
 
-const escapeHtml = (value = "") =>
-  String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-const buildTemplateHtml = (form) => `<!doctype html>
-<html>
-  <body style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;padding:24px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#fff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px;">
-                <p style="margin:0 0 8px;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#64748b;font-weight:700;">${escapeHtml(form.eyebrow)}</p>
-                <h1 style="margin:0;font-size:34px;line-height:1.15;color:#0f172a;font-weight:700;">${escapeHtml(form.headline)}</h1>
-                <p style="margin:16px 0 0;font-size:16px;line-height:1.8;color:#334155;white-space:pre-line;">${escapeHtml(form.bodyText).replaceAll("\n", "<br />")}</p>
-                <div style="margin-top:24px;">
-                  <img src="${escapeHtml(form.imageUrl)}" alt="${escapeHtml(form.imageAlt)}" style="display:block;width:100%;border-radius:24px;object-fit:cover;" />
-                </div>
-                <div style="margin-top:24px;">
-                  <a href="${escapeHtml(form.ctaUrl)}" style="display:inline-block;text-decoration:none;font-size:15px;font-weight:700;padding:13px 20px;border-radius:12px;background:#635bff;color:#fff;border:1px solid #635bff;">${escapeHtml(form.ctaText)}</a>
-                </div>
-                <p style="margin:24px 0 0;font-size:12px;line-height:1.7;color:#64748b;">${escapeHtml(form.footerNote)}</p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-
 function TemplateFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const presetKey = searchParams.get("preset");
   const toast = useContext(ToastContext);
   const [form, setForm] = useState(createInitialForm());
   const [isLoading, setIsLoading] = useState(Boolean(id));
@@ -132,28 +103,32 @@ function TemplateFormPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!id) {
-      setIsLoading(false);
+    if (id) {
+      const loadTemplate = async () => {
+        setIsLoading(true);
+
+        try {
+          const { data } = await api.get(`/templates/${id}`);
+          setForm(mapTemplateToForm(data));
+        } catch (requestError) {
+          setError(
+            requestError.response?.data?.message || "Unable to load template",
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      loadTemplate();
       return;
     }
 
-    const loadTemplate = async () => {
-      setIsLoading(true);
+    if (presetKey && getTemplatePreset(presetKey)) {
+      setForm((current) => applyTemplatePreset(current, presetKey));
+    }
 
-      try {
-        const { data } = await api.get(`/templates/${id}`);
-        setForm(mapTemplateToForm(data));
-      } catch (requestError) {
-        setError(
-          requestError.response?.data?.message || "Unable to load template",
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadTemplate();
-  }, [id]);
+    setIsLoading(false);
+  }, [id, presetKey]);
 
   const generatedHtml = useMemo(() => buildTemplateHtml(form), [form]);
 

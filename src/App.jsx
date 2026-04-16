@@ -21,6 +21,7 @@ import PlaceholderPage from "./pages/dashboard/PlaceholderPage.jsx";
 import ReportsPage from "./pages/dashboard/ReportsPage.jsx";
 import SegmentFormPage from "./pages/dashboard/SegmentFormPage.jsx";
 import SegmentsListPage from "./pages/dashboard/SegmentsListPage.jsx";
+import TeamUsersPage from "./pages/dashboard/TeamUsersPage.jsx";
 import SubscriberDetailsPage from "./pages/dashboard/SubscriberDetailsPage.jsx";
 import SubscriberFormPage from "./pages/dashboard/SubscriberFormPage.jsx";
 import SuppressionListPage from "./pages/dashboard/SuppressionListPage.jsx";
@@ -103,6 +104,14 @@ function App() {
             element={
               <PermissionGate permission="view_reports">
                 <ReportsPage />
+              </PermissionGate>
+            }
+          />
+          <Route
+            path="team-users"
+            element={
+              <PermissionGate permission="manage_team_access">
+                <TeamUsersPage />
               </PermissionGate>
             }
           />
@@ -244,6 +253,7 @@ function App() {
                   "/audience",
                   "/segments",
                   "/automations",
+                  "/team-users",
                 ].includes(item.path) &&
                 ![
                   "/analytics",

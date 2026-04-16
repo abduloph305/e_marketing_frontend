@@ -1,7 +1,7 @@
 function EmptyState({ title, description, action }) {
   return (
     <div className="empty-state">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(99,91,255,0.12)] text-sm font-semibold text-[var(--accent)]">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(21,128,61,0.12)] text-sm font-semibold text-[var(--accent)]">
         EM
       </div>
       <h3 className="mt-5 text-lg font-semibold text-ui-strong">{title}</h3>

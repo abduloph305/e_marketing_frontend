@@ -8,10 +8,10 @@ function IconButton({ children, isActive = false, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex h-11 w-11 items-center justify-center rounded-[3px] border transition ${
+      className={`relative flex h-11 w-11 items-center justify-center rounded-full border transition ${
         isActive
-          ? 'border-[#f2c9b7] bg-[#fff8f3] text-[#ef4444] shadow-[0_6px_18px_rgba(239,68,68,0.08)]'
-          : 'border-transparent bg-transparent text-[#7b7592] hover:border-[#e4d9fb] hover:bg-white'
+          ? 'border-[rgba(21,128,61,0.2)] bg-[#eef7e8] text-[#166534] shadow-[0_6px_18px_rgba(21,128,61,0.08)]'
+          : 'border-[var(--border-soft)] bg-white/80 text-[#475467] hover:border-[rgba(21,128,61,0.2)] hover:bg-[#f4f8ef]'
       }`}
     >
       {children}
@@ -46,10 +46,10 @@ function Topbar() {
     <header className="topbar-panel flex flex-col gap-4 px-5 py-5 md:flex-row md:items-center md:justify-between md:px-6">
       <div>
         {/* <p className="text-xs font-semibold uppercase tracking-[0.24em] text-ui-muted">Marketing Workspace</p> */}
-        <h2 className="mt-2 text-[32px] font-semibold tracking-tight text-ui-strong">
+        <h2 className="mt-2 text-[34px] font-semibold tracking-tight text-ui-strong">
           {currentPage.path === '/overview' ? 'Dashboard' : currentPage.label}
         </h2>
-        <p className="mt-1 text-sm text-ui-body">{currentPage.description}</p>
+        <p className="mt-1 max-w-2xl text-[15px] text-ui-body">{currentPage.description}</p>
       </div>
 
       <div className="relative flex items-center gap-3">

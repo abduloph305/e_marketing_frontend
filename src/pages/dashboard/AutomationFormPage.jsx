@@ -1,10 +1,12 @@
-import { useContext, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useContext, useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import LoadingState from '../../components/ui/LoadingState.jsx'
 import PageHeader from '../../components/ui/PageHeader.jsx'
 import { ToastContext } from '../../context/ToastContext.jsx'
 import {
+  buildDripCampaignPreset,
   createWorkflowStep,
+  dripCampaignPresets,
   stepTypeLabels,
   triggerLabels,
 } from '../../data/automations.js'
@@ -22,6 +24,65 @@ const createInitialForm = () => ({
   },
   steps: [createWorkflowStep('send_email'), createWorkflowStep('exit')],
 })
+
+const presetTemplateHints = {
+  welcome_series: ['welcome series', 'welcome'],
+  welcome_signup: ['signup email', 'welcome'],
+  abandoned_cart: ['abandoned cart recovery', 'abandoned cart'],
+  order_followup: ['follow-up sequence', 'follow-up'],
+  reminder_email: ['reminder email', 'reminder'],
+  discount_offer: ['discount offer', 'discount'],
+  order_confirmation: ['order confirmation', 'order'],
+  payment_success: ['payment success / thank you', 'payment success', 'thank you'],
+}
+
+const normalizeTemplateText = (value = '') =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const resolvePresetTemplateId = (templates = [], presetKey = '') => {
+  const hints = presetTemplateHints[presetKey] || []
+
+  if (!Array.isArray(templates) || !templates.length || !hints.length) {
+    return ''
+  }
+
+  const normalizedHints = hints.map(normalizeTemplateText)
+
+  const exactMatch = templates.find((template) =>
+    normalizedHints.some(
+      (hint) =>
+        normalizeTemplateText(template.name) === hint ||
+        normalizeTemplateText(template.subject) === hint,
+    ),
+  )
+
+  if (exactMatch) {
+    return exactMatch._id || ''
+  }
+
+  const partialMatch = templates.find((template) => {
+    const candidate = `${template.name || ''} ${template.subject || ''}`.toLowerCase()
+    return normalizedHints.some((hint) => candidate.includes(hint))
+  })
+
+  return partialMatch?._id || templates[0]?._id || ''
+}
+
+const getPreviewStepLabel = (step = {}, index = 0) => {
+  const labelMap = {
+    delay: 'Delay',
+    condition: 'Condition',
+    send_email: 'Email',
+    add_tag: 'Add tag',
+    remove_tag: 'Remove tag',
+    webhook: 'Webhook',
+    exit: 'Exit',
+  }
+
+  return `${index + 1}. ${labelMap[step.type] || step.type || 'Step'}`
+}
 
 function StepEditor({ step, index, templates, onChange, onRemove }) {
   return (
@@ -228,12 +289,18 @@ function StepEditor({ step, index, templates, onChange, onRemove }) {
 function AutomationFormPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const toast = useContext(ToastContext)
   const [form, setForm] = useState(createInitialForm())
   const [meta, setMeta] = useState({ triggers: [], statuses: [], templates: [], segments: [], ecommerceHooks: null })
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const presetKey = searchParams.get('preset') || ''
+  const selectedPreset = useMemo(
+    () => dripCampaignPresets.find((preset) => preset.key === presetKey) || null,
+    [presetKey],
+  )
 
   useEffect(() => {
     const loadData = async () => {
@@ -258,6 +325,13 @@ function AutomationFormPage() {
             },
             steps: workflowResponse.data.steps?.length ? workflowResponse.data.steps : [createWorkflowStep('send_email')],
           })
+        } else if (selectedPreset) {
+          const presetTemplateId = resolvePresetTemplateId(metaResponse.data.templates, selectedPreset.key)
+          const nextPreset = buildDripCampaignPreset(selectedPreset.key, presetTemplateId)
+
+          if (nextPreset) {
+            setForm(nextPreset)
+          }
         }
       } catch (requestError) {
         setError(requestError.response?.data?.message || 'Unable to load workflow editor')
@@ -267,7 +341,7 @@ function AutomationFormPage() {
     }
 
     loadData()
-  }, [id])
+  }, [id, selectedPreset])
 
   const updateStep = (index, nextStep) => {
     setForm((current) => ({
@@ -352,9 +426,13 @@ function AutomationFormPage() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="space-y-3">
             <PageHeader
-              
-              title={id ? 'Edit workflow' : 'Build a workflow'}
-              
+              eyebrow={selectedPreset && !id ? 'Ready-made workflow' : undefined}
+              title={selectedPreset && !id ? selectedPreset.label : id ? 'Edit workflow' : 'Build a workflow'}
+              description={
+                selectedPreset && !id
+                  ? selectedPreset.description
+                  : 'Create a trigger-based workflow with delays, conditions, and email steps.'
+              }
             />
             <div className="flex flex-wrap gap-2">
               {/* <span className="soft-pill">Visual step builder</span> */}
@@ -505,19 +583,74 @@ function AutomationFormPage() {
 
         <div className="space-y-6">
           <section className="shell-card-strong p-6">
-            <h3 className="text-xl font-semibold text-[#2f2b3d]">Builder guidance</h3>
-            <div className="mt-4 space-y-4 text-sm text-[#6e6787]">
-              <p>1. Start with a clear trigger so the processor can stay deterministic as integrations grow.</p>
-              <p>2. Keep the sequence readable. Delay, condition, and send steps should explain themselves at a glance.</p>
-              <p>3. Use exit steps intentionally to stop a journey when a branch should no longer continue.</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-[#2f2b3d]">
+                  {selectedPreset && !id ? 'Ready-made preview' : 'Workflow preview'}
+                </h3>
+                <p className="mt-2 text-sm text-[#6e6787]">
+                  {selectedPreset && !id
+                    ? 'This is the preset version the user will start from.'
+                    : 'This reflects the current custom workflow draft.'}
+                </p>
+              </div>
+              <span className="rounded-full border border-[#ddd4f2] bg-white px-3 py-1 text-xs font-semibold text-[#5f5878]">
+                {form.steps.length} steps
+              </span>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-[#ebe6fb] bg-[#faf8ff] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7fb3]">
+                Name
+              </p>
+              <p className="mt-1 text-[15px] font-semibold text-[#1f1d2b]">
+                {form.name || 'Untitled workflow'}
+              </p>
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7fb3]">
+                Trigger
+              </p>
+              <p className="mt-1 text-sm text-[#1f1d2b]">
+                {triggerLabels[form.trigger] || form.trigger}
+              </p>
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7fb3]">
+                Description
+              </p>
+              <p className="mt-1 text-sm leading-6 text-[#5f5878]">
+                {form.description || 'No description added yet.'}
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {form.steps.map((step, index) => (
+                <div
+                  key={`${step.type}-${index}`}
+                  className="rounded-2xl border border-[#ebe6fb] bg-white px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#1f1d2b]">
+                      {getPreviewStepLabel(step, index)}
+                    </p>
+                    <span className="rounded-full bg-[#f3efff] px-3 py-1 text-xs font-medium text-[#6b5fb5]">
+                      {stepTypeLabels[step.type] || step.type}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-[#6e6787]">
+                    {step.title || 'Untitled step'}
+                  </p>
+                  {step.description ? (
+                    <p className="mt-1 text-xs leading-5 text-[#8b84a8]">{step.description}</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
           </section>
 
           <section className="shell-card-strong p-6">
-            <h3 className="text-xl font-semibold text-[#2f2b3d]">Future integrations</h3>
+            <h3 className="text-xl font-semibold text-[#2f2b3d]">Preview note</h3>
             <div className="mt-4 rounded-2xl bg-[#faf7ff] p-4 text-sm text-[#6e6787]">
-              <p>Ecommerce-driven triggers are scaffolded but not hard-coupled to any store yet.</p>
-              <p className="mt-3">That keeps the architecture clean now while leaving room for real event ingestion later.</p>
+              <p>
+                The preview updates as you edit the workflow, so ready-made and custom flows both stay easy to verify before saving.
+              </p>
             </div>
           </section>
         </div>

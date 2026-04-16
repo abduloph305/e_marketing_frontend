@@ -1,18 +1,17 @@
 export const navigationItems = [
   {
-    label: "Overview",
+    label: "Home",
     path: "/overview",
     description: "A focused snapshot of campaign performance and list growth.",
     group: "Core",
-    icon: "OV",
+    icon: "home",
     permission: "view_dashboard",
   },
   {
     label: "Campaigns",
     path: "/campaigns",
-    
     group: "Core",
-    icon: "CP",
+    icon: "campaigns",
     permission: "manage_campaigns",
   },
   {
@@ -21,7 +20,7 @@ export const navigationItems = [
     description:
       "Store reusable email layouts and brand-approved content blocks.",
     group: "Core",
-    icon: "TM",
+    icon: "templates",
     permission: "edit_content",
   },
   {
@@ -30,7 +29,7 @@ export const navigationItems = [
     description:
       "Design modular emails with blocks, product cards, and live previews.",
     group: "Core",
-    icon: "EB",
+    icon: "builder",
     permission: "edit_content",
   },
   {
@@ -38,7 +37,7 @@ export const navigationItems = [
     path: "/audience",
     description: "Review contacts, list hygiene, and subscriber growth.",
     group: "Audience",
-    icon: "AU",
+    icon: "audience",
     permission: "manage_audience",
   },
   {
@@ -47,7 +46,7 @@ export const navigationItems = [
     description:
       "Define audience rules for sharper targeting and personalization.",
     group: "Audience",
-    icon: "SG",
+    icon: "segments",
     permission: "manage_audience",
   },
   {
@@ -55,7 +54,7 @@ export const navigationItems = [
     path: "/suppressions",
     description: "Review unsubscribed and suppressed recipients.",
     group: "Audience",
-    icon: "SP",
+    icon: "suppression",
     permission: "manage_audience",
   },
   {
@@ -63,7 +62,7 @@ export const navigationItems = [
     path: "/analytics",
     description: "Track opens, clicks, and conversion signals at a glance.",
     group: "Insights",
-    icon: "AN",
+    icon: "analytics",
     permission: "view_analytics",
   },
   {
@@ -71,7 +70,7 @@ export const navigationItems = [
     path: "/deliverability",
     description: "Monitor sender health, bounce patterns, and inbox placement.",
     group: "Insights",
-    icon: "DV",
+    icon: "deliverability",
     permission: "view_analytics",
   },
   {
@@ -79,7 +78,7 @@ export const navigationItems = [
     path: "/automations",
     description: "Organize lifecycle journeys and trigger-based email flows.",
     group: "Workspace",
-    icon: "AT",
+    icon: "automation",
     permission: "manage_automations",
   },
   {
@@ -87,8 +86,16 @@ export const navigationItems = [
     path: "/reports",
     description: "Export performance summaries for stakeholders and teams.",
     group: "Workspace",
-    icon: "RP",
+    icon: "reports",
     permission: "view_reports",
+  },
+  {
+    label: "Invite Users",
+    path: "/team-users",
+    description: "Grant limited dashboard access to teammates and collaborators.",
+    group: "Workspace",
+    icon: "team",
+    permission: "manage_team_access",
   },
   {
     label: "Settings",
@@ -96,7 +103,7 @@ export const navigationItems = [
     description:
       "Configure sender details, workspace controls, and platform preferences.",
     group: "Workspace",
-    icon: "ST",
+    icon: "settings",
     permission: "manage_settings",
   },
 ];
