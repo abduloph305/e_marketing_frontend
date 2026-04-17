@@ -1,18 +1,12 @@
-import { useContext, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
-import PageHeader from "../../components/ui/PageHeader.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
-import { templateVariables } from "../../data/campaigns.js";
-import {
-  getCatalogProduct,
-  productCatalog,
-} from "../../data/productCatalog.js";
+import { getCatalogProduct, productCatalog } from "../../data/productCatalog.js";
 import { api } from "../../lib/api.js";
 
 const uid = () =>
-  globalThis.crypto?.randomUUID?.() ||
-  `block_${Math.random().toString(36).slice(2, 10)}`;
+  globalThis.crypto?.randomUUID?.() || `block_${Math.random().toString(36).slice(2, 10)}`;
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -24,201 +18,479 @@ const escapeHtml = (value = "") =>
 
 const money = (value = 0) => `$${Number(value || 0).toFixed(2)}`;
 
-const textBlock = (type, content, align = "left") => ({
-  id: uid(),
-  type,
-  props: { content, align },
-});
-const imageBlock = () => ({
-  id: uid(),
-  type: "image",
-  props: {
-    imageUrl:
-      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
-    alt: "Campaign banner",
-    caption: "Optional caption for your image block.",
-    rounded: true,
+const cloneStyleSettings = (settings = {}) => ({
+  layout: { bodyWidth: 600, bodyColor: "#ffffff", ...(settings.layout || {}) },
+  spacing: { padding: 28, groupSides: true, ...(settings.spacing || {}) },
+  background: {
+    color: "#f5f7fb",
+    imageUrl: "",
+    ...(settings.background || {}),
+  },
+  header: { showBrowserLink: true, ...(settings.header || {}) },
+  text: {
+    paragraphFont: "Arial",
+    headingFont: "Arial",
+    fontSize: 16,
+    fontColor: "#334155",
+    lineHeight: 1.7,
+    direction: "ltr",
+    linkColor: "#2563eb",
+    linkStyle: "underline",
+    ...(settings.text || {}),
+  },
+  buttons: {
+    font: "Arial",
+    fontSize: 16,
+    fontColor: "#ffffff",
+    bold: true,
+    italic: false,
+    underline: false,
+    width: 50,
+    roundedCorners: 12,
+    backgroundColor: "#111827",
+    borderSize: 0,
+    borderColor: "#111827",
+    ...(settings.buttons || {}),
   },
 });
-const buttonBlock = () => ({
-  id: uid(),
-  type: "button",
-  props: {
-    text: "Shop now",
-    url: "https://sellerslogin.com",
-    style: "solid",
-    align: "left",
-  },
-});
-const productBlock = () => ({
-  id: uid(),
-  type: "product",
-  props: {
-    productId: productCatalog[0]?.id || "",
-    showPrice: true,
-    showCompareAt: true,
-  },
-});
-const productListBlock = () => ({
-  id: uid(),
-  type: "product_list",
-  props: {
-    title: "Recommended products",
-    productIds: productCatalog.slice(0, 3).map((p) => p.id),
-    limit: 3,
-    showCompareAt: true,
-  },
-});
-const spacerBlock = () => ({ id: uid(), type: "spacer", props: { size: 24 } });
-const dividerBlock = () => ({ id: uid(), type: "divider", props: {} });
 
-const initialForm = () => ({
+const createInitialForm = (mode = "builder") => ({
   name: "",
   subject: "",
   previewText: "",
   accentColor: "#6d28d9",
+  styleSettings: cloneStyleSettings(),
   blocks: [],
-  advancedHtml: "",
+  advancedHtml: mode === "html" ? "" : "",
 });
 
 const normalizeBlocks = (blocks = []) =>
-  blocks.filter(Boolean).map((block) => ({
-    id: block.id || uid(),
-    type: block.type,
-    props: block.props || {},
-  }));
+  blocks.filter(Boolean).map((block) => {
+    const legacyTypeMap = {
+      eyebrow: "body_text",
+      heading: "title",
+      text: "body_text",
+      body: "body_text",
+      product_list: "dynamic_content",
+    };
+    const type = blockDefinitions[block.type] ? block.type : legacyTypeMap[block.type] || block.type;
+    const props = block.props || {};
+
+    if (type === "title") return { id: block.id || uid(), type, props: { ...blockDefinitions.title.create(), content: props.content || props.title || props.text || "Your latest update", align: props.align || "left", fontSize: Number(props.fontSize || 34), color: props.color || "#0f172a" } };
+    if (type === "body_text") return { id: block.id || uid(), type, props: { ...blockDefinitions.body_text.create(), content: props.content || props.text || "Write your email copy here.", align: props.align || "left", fontSize: Number(props.fontSize || 16), color: props.color || "#334155", lineHeight: Number(props.lineHeight || 1.7), bold: Boolean(props.bold), italic: Boolean(props.italic), underline: Boolean(props.underline) } };
+    if (type === "button") return { id: block.id || uid(), type, props: { ...blockDefinitions.button.create(), ...props, text: props.text || props.label || "Call to action" } };
+    if (type === "image") return { id: block.id || uid(), type, props: { ...blockDefinitions.image.create(), ...props } };
+    if (type === "product") return { id: block.id || uid(), type, props: { ...blockDefinitions.product.create(), ...props } };
+    if (type === "dynamic_content") return { id: block.id || uid(), type, props: { ...blockDefinitions.dynamic_content.create(), ...props } };
+    if (type === "logo") return { id: block.id || uid(), type, props: { ...blockDefinitions.logo.create(), ...props } };
+    if (type === "social") return { id: block.id || uid(), type, props: { ...blockDefinitions.social.create(), ...props } };
+    if (type === "html") return { id: block.id || uid(), type, props: { ...blockDefinitions.html.create(), ...props } };
+    if (type === "divider") return { id: block.id || uid(), type, props: { ...blockDefinitions.divider.create(), ...props } };
+    if (type === "navigation") return { id: block.id || uid(), type, props: { ...blockDefinitions.navigation.create(), ...props } };
+    if (type === "spacer") return { id: block.id || uid(), type, props: { ...blockDefinitions.spacer.create(), ...props } };
+    if (type === "video") return { id: block.id || uid(), type, props: { ...blockDefinitions.video.create(), ...props } };
+    return { id: block.id || uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), ...props } };
+  });
 
 const legacyToBlocks = (design = {}) => {
-  if (Array.isArray(design.blocks) && design.blocks.length)
+  if (Array.isArray(design.blocks) && design.blocks.length) {
     return normalizeBlocks(design.blocks);
+  }
+
   const blocks = [];
-  if (design.headerLabel) blocks.push(textBlock("eyebrow", design.headerLabel));
-  if (design.headline) blocks.push(textBlock("heading", design.headline));
-  if (design.introText) blocks.push(textBlock("body", design.introText));
-  if (design.bodyText) blocks.push(textBlock("body", design.bodyText));
-  if (design.ctaText || design.ctaUrl)
+  if (design.headerLabel) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.headerLabel, fontSize: 12, color: "#64748b", bold: true } });
+  if (design.headline) blocks.push({ id: uid(), type: "title", props: { ...blockDefinitions.title.create(), content: design.headline } });
+  if (design.introText) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.introText } });
+  if (design.bodyText) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.bodyText } });
+  if (design.ctaText || design.ctaUrl) {
     blocks.push({
       id: uid(),
       type: "button",
       props: {
+        ...blockDefinitions.button.create(),
         text: design.ctaText || "View Update",
         url: design.ctaUrl || "https://sellerslogin.com",
-        style: "solid",
-        align: "left",
       },
     });
-  if (design.footerNote) blocks.push(textBlock("body", design.footerNote));
-  return blocks.length ? blocks : [];
+  }
+  if (design.footerNote) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.footerNote } });
+  return blocks;
 };
 
-const mapTemplateToForm = (data) => {
+const mapTemplateToForm = (data, mode = "builder") => {
   const design = data.designJson || {};
   return {
-    ...initialForm(),
+    ...createInitialForm(mode),
     name: data.name || "",
     subject: data.subject || "",
     previewText: data.previewText || "",
     accentColor: design.accentColor || "#6d28d9",
+    styleSettings: cloneStyleSettings(design.styleSettings || design.builderSettings || {}),
     blocks: legacyToBlocks(design),
     advancedHtml: data.htmlContent || "",
   };
 };
 
-const blockLabel = {
-  eyebrow: "Eyebrow",
-  heading: "Heading",
-  text: "Text",
-  body: "Body text",
-  image: "Image",
-  button: "Button / CTA",
-  product: "Product card",
-  product_list: "Dynamic product list",
-  divider: "Divider",
-  spacer: "Spacer",
+const socialNetworks = ["facebook", "instagram", "x", "youtube", "tiktok", "linkedin"];
+
+const blockDefinitions = {
+  title: {
+    label: "Title",
+    description: "Primary headline for the email.",
+    create: () => ({
+      content: "Your latest update",
+      align: "left",
+      fontSize: 34,
+      color: "#0f172a",
+      level: 1,
+      marginTop: 0,
+      marginBottom: 14,
+    }),
+  },
+  body_text: {
+    label: "Body text",
+    description: "Editable paragraph copy with inline formatting.",
+    create: () => ({
+      content: "Write your email copy here.",
+      align: "left",
+      fontSize: 16,
+      color: "#334155",
+      lineHeight: 1.7,
+      bold: false,
+      italic: false,
+      underline: false,
+      marginTop: 0,
+      marginBottom: 14,
+    }),
+  },
+  image: {
+    label: "Image",
+    description: "Hero, product, or banner image.",
+    create: () => ({
+      imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+      alt: "Campaign banner",
+      width: 100,
+      align: "center",
+      linkUrl: "",
+      caption: "Optional caption for your image block.",
+    }),
+  },
+  video: {
+    label: "Video",
+    description: "Video thumbnail with a linked play CTA.",
+    create: () => ({
+      videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      thumbnailUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+      alt: "Video preview",
+      align: "center",
+      ctaLabel: "Play video",
+      caption: "Video preview content.",
+    }),
+  },
+  button: {
+    label: "Button",
+    description: "Clear CTA with custom colors and spacing.",
+    create: () => ({
+      text: "Call to action",
+      url: "https://sellerslogin.com",
+      align: "center",
+      backgroundColor: "#111827",
+      fontColor: "#ffffff",
+      radius: 14,
+      paddingX: 24,
+      paddingY: 14,
+      width: 50,
+      borderSize: 0,
+      borderColor: "#111827",
+    }),
+  },
+  dynamic_content: {
+    label: "Dynamic content",
+    description: "Auto-populated content from a dynamic source.",
+    create: () => ({
+      sourceType: "recommendations",
+      sourceQuery: "",
+      itemCount: 3,
+      layout: "grid",
+      showImage: true,
+      showTitle: true,
+      showPrice: true,
+      showButton: true,
+      fallbackText: "No matching items found.",
+    }),
+  },
+  logo: {
+    label: "Logo",
+    description: "Brand logo with link and width control.",
+    create: () => ({
+      imageUrl: "",
+      alt: "Logo",
+      linkUrl: "",
+      width: 160,
+      align: "left",
+    }),
+  },
+  social: {
+    label: "Social",
+    description: "Social icon row with custom links.",
+    create: () => ({
+      items: [
+        { network: "instagram", url: "" },
+        { network: "facebook", url: "" },
+      ],
+      align: "left",
+      iconSize: 32,
+      gap: 12,
+    }),
+  },
+  html: {
+    label: "HTML",
+    description: "Raw HTML block with preview rendering.",
+    create: () => ({
+      html: "<div style=\"padding:12px;border:1px dashed #cbd5e1;border-radius:16px;\">Custom HTML</div>",
+      previewMode: "safe",
+    }),
+  },
+  divider: {
+    label: "Divider",
+    description: "Visual separator with custom spacing.",
+    create: () => ({
+      thickness: 1,
+      width: 100,
+      align: "center",
+      color: "#e5e7eb",
+      spacingTop: 16,
+      spacingBottom: 16,
+    }),
+  },
+  product: {
+    label: "Product",
+    description: "Single product card tied to the catalog.",
+    create: () => ({
+      productIds: [productCatalog[0]?.id || ""],
+      layout: "card",
+      showImage: true,
+      showTitle: true,
+      showPrice: true,
+      showCompareAt: true,
+      showButton: true,
+      ctaLabel: "View product",
+    }),
+  },
+  navigation: {
+    label: "Navigation",
+    description: "Editable menu items and alignment.",
+    create: () => ({
+      items: [
+        { label: "Shop", url: "#" },
+        { label: "About", url: "#" },
+        { label: "Contact", url: "#" },
+      ],
+      align: "center",
+      gap: 20,
+      color: "#111827",
+      fontSize: 14,
+    }),
+  },
+  spacer: {
+    label: "Spacer",
+    description: "Clean vertical breathing room.",
+    create: () => ({
+      height: 24,
+    }),
+  },
 };
 
-const blockTypesInOrder = [
-  "eyebrow",
-  "heading",
-  "text",
-  "image",
-  "button",
-  "product",
-  "product_list",
-  "divider",
-  "spacer",
+const blockTypesInOrder = Object.keys(blockDefinitions);
+const blockLabel = Object.fromEntries(blockTypesInOrder.map((type) => [type, blockDefinitions[type].label]));
+const paletteItems = Object.fromEntries(
+  blockTypesInOrder.map((type) => [type, { title: blockDefinitions[type].label, description: blockDefinitions[type].description }]),
+);
+
+const createBlockByType = (type) => ({
+  id: uid(),
+  type,
+  props: blockDefinitions[type]?.create ? blockDefinitions[type].create() : {},
+});
+
+const sectionPresets = [
+  {
+    key: "hero",
+    title: "Hero section",
+    description: "Title, body text, image, and CTA.",
+    build: () => [
+      createBlockByType("title"),
+      createBlockByType("body_text"),
+      createBlockByType("image"),
+      createBlockByType("button"),
+    ],
+  },
+  {
+    key: "product",
+    title: "Product spotlight",
+    description: "Single product or dynamic recommendation.",
+    build: () => [createBlockByType("title"), createBlockByType("product")],
+  },
+  {
+    key: "footer",
+    title: "Footer section",
+    description: "Navigation, social links, and spacer.",
+    build: () => [createBlockByType("divider"), createBlockByType("navigation"), createBlockByType("social"), createBlockByType("spacer")],
+  },
 ];
 
-const blockHtml = (block, accent) => {
-  const a = block.props.align || "left";
-  const c = escapeHtml(block.props.content || "");
-  const alignStyle = `text-align:${a};`;
-  if (block.type === "eyebrow")
-    return `<p style="margin:0 0 8px;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#64748b;font-weight:700;${alignStyle}">${c}</p>`;
-  if (block.type === "heading")
-    return `<h2 style="margin:0;font-size:30px;line-height:1.15;color:#0f172a;font-weight:700;${alignStyle}">${c}</h2>`;
-  if (block.type === "body")
-    return `<p style="margin:0;font-size:16px;line-height:1.8;color:#334155;${alignStyle};white-space:pre-line;">${c.replaceAll("\n", "<br />")}</p>`;
-  if (block.type === "image")
-    return `<div><img src="${escapeHtml(block.props.imageUrl || "")}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:100%;border-radius:${block.props.rounded ? "24px" : "0"};object-fit:cover;" />${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:center;">${escapeHtml(block.props.caption)}</p>` : ""}</div>`;
-  if (block.type === "button") {
-    const style =
-      block.props.style === "ghost"
-        ? `border:1px solid ${accent};color:${accent};background:transparent;`
-        : `background:${accent};color:#fff;border:1px solid ${accent};`;
-    return `<div style="text-align:${a};"><a href="${escapeHtml(block.props.url || "#")}" style="display:inline-block;text-decoration:none;font-size:15px;font-weight:700;padding:13px 20px;border-radius:12px;${style}">${escapeHtml(block.props.text || "Click")}</a></div>`;
+const fontOptions = ["Arial", "Helvetica", "Georgia", "Times New Roman", "Verdana", "Inter"];
+
+const stripUnsafeHtml = (html = "") => String(html || "").replace(/<script[\s\S]*?<\/script>/gi, "");
+
+const blockHtml = (block, settings) => {
+  const align = block.props.align || "left";
+  const textAlign = `text-align:${align};`;
+  const paragraphFont = settings.text.paragraphFont || "Arial";
+  const headingFont = settings.text.headingFont || paragraphFont;
+  const textColor = settings.text.fontColor || "#334155";
+  const lineHeight = Number(settings.text.lineHeight || 1.7);
+  const headingSize = Math.max(24, Number(settings.text.fontSize || 16) + 14);
+  const bodySize = Number(settings.text.fontSize || 16);
+  const direction = settings.text.direction === "rtl" ? "rtl" : "ltr";
+  const blockColor = block.props.color || textColor;
+  const blockSize = Number(block.props.fontSize || bodySize);
+
+  switch (block.type) {
+    case "title":
+      return `<h1 style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || headingSize)}px;line-height:1.15;color:${block.props.color || "#0f172a"};font-weight:700;font-family:${headingFont};direction:${direction};${textAlign}">${escapeHtml(block.props.content || "")}</h1>`;
+    case "body_text":
+      return `<p style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || bodySize)}px;line-height:${Number(block.props.lineHeight || lineHeight)};color:${block.props.color || textColor};white-space:pre-line;font-family:${paragraphFont};font-weight:${block.props.bold ? 700 : 400};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}direction:${direction};${textAlign}">${escapeHtml(block.props.content || "").replaceAll("\n", "<br />")}</p>`;
+    case "image":
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" style="text-decoration:none;">${block.props.imageUrl ? `<img src="${escapeHtml(block.props.imageUrl)}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:${Math.max(20, Number(block.props.width || 100))}%;margin:0 auto;border-radius:24px;object-fit:cover;" />` : `<div style="border:1px dashed #cbd5e1;border-radius:24px;padding:40px 20px;color:#94a3b8;text-align:center;">Image</div>`}</a>${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:${align};font-family:${paragraphFont};">${escapeHtml(block.props.caption)}</p>` : ""}</div>`;
+    case "video":
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.videoUrl || "#")}" style="display:inline-block;text-decoration:none;"><div style="position:relative;border-radius:24px;overflow:hidden;border:1px solid #e5e7eb;background:#0f172a;"><img src="${escapeHtml(block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80")}" alt="${escapeHtml(block.props.alt || "Video preview")}" style="display:block;width:100%;max-width:100%;object-fit:cover;opacity:.92;" /><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="width:72px;height:72px;border-radius:999px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#111827;">▶</span></div></div></a><p style="margin:10px 0 0;color:#64748b;font-family:${paragraphFont};font-size:13px;">${escapeHtml(block.props.caption || block.props.ctaLabel || "Play video")}</p></div>`;
+    case "button": {
+      const width = Math.min(100, Math.max(20, Number(block.props.width || settings.buttons.width || 50)));
+      const borderSize = Math.max(0, Number(block.props.borderSize ?? settings.buttons.borderSize ?? 0));
+      const backgroundColor = block.props.backgroundColor || settings.buttons.backgroundColor || "#111827";
+      const fontColor = block.props.fontColor || settings.buttons.fontColor || "#ffffff";
+      const radius = Number(block.props.radius || settings.buttons.roundedCorners || 12);
+      const fontSize = Number(block.props.fontSize || settings.buttons.fontSize || 16);
+      const paddingY = Number(block.props.paddingY || 12);
+      const paddingX = Number(block.props.paddingX || 20);
+      const marginY = Number(block.props.marginY || 15);
+      const buttonStyle = `display:inline-block;box-sizing:border-box;text-decoration:none;font-size:${fontSize}px;font-family:${settings.buttons.font || "Arial"};font-weight:${block.props.bold === false ? 500 : 700};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}padding:${paddingY}px ${paddingX}px;border-radius:${radius}px;${block.props.style === "ghost" ? `background:transparent;color:${backgroundColor};` : `background:${backgroundColor};color:${fontColor};`}border:${borderSize}px solid ${block.props.borderColor || backgroundColor};width:${width}%;`;
+      return `<div style="text-align:${align};margin:${marginY}px 0;"><a href="${escapeHtml(block.props.url || "#")}" title="${escapeHtml(block.props.tooltip || "")}" style="${buttonStyle}">${escapeHtml(block.props.text || "Click")}</a></div>`;
+    }
+    case "dynamic_content": {
+      const products = productCatalog.slice(0, Number(block.props.itemCount || 3));
+      const list = products.length ? products : productCatalog.slice(0, 3);
+      const layout = block.props.layout === "list" ? "list" : "grid";
+      const showImage = block.props.showImage !== false;
+      const showTitle = block.props.showTitle !== false;
+      const showPrice = block.props.showPrice !== false;
+      const showButton = block.props.showButton !== false;
+      const card = (product) => `
+        <td style="${layout === "grid" ? "width:33.33%;padding:0 8px 16px;vertical-align:top;" : "width:100%;padding:0 0 12px;"}">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff;">
+            <tr>
+              <td style="padding:16px;">
+                ${showImage ? `<img src="${escapeHtml(product.imageUrl)}" alt="${escapeHtml(product.name)}" style="display:block;width:100%;height:160px;object-fit:cover;border-radius:14px;" />` : ""}
+                ${showTitle ? `<div style="margin-top:12px;font-size:16px;font-weight:700;color:#0f172a;font-family:${paragraphFont};">${escapeHtml(product.name)}</div>` : ""}
+                ${showPrice ? `<div style="margin-top:8px;font-weight:700;color:${settings.buttons.backgroundColor || "#111827"};">${money(product.price)}${block.props.showCompareAt && product.compareAtPrice ? `<span style="margin-left:8px;color:#94a3b8;text-decoration:line-through;">${money(product.compareAtPrice)}</span>` : ""}</div>` : ""}
+                ${showButton ? `<div style="margin-top:14px;"><span style="display:inline-block;background:${settings.buttons.backgroundColor || "#111827"};color:${settings.buttons.fontColor || "#ffffff"};padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;font-family:${paragraphFont};">${escapeHtml(block.props.ctaLabel || "View product")}</span></div>` : ""}
+              </td>
+            </tr>
+          </table>
+        </td>`;
+      return `<div style="margin:20px 0 0;text-align:${align};"><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:${paragraphFont};margin:0 0 14px;">${escapeHtml(block.props.title || "Recommended products")}</div>${layout === "grid" ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>${list.map((product) => card(product)).join("")}</tr></table>` : `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${list.map((product) => `<tr>${card(product).replace("<td style=\"width:100%;padding:0 0 12px;\">", "<td style=\"width:100%;padding:0 0 12px;\">")}</tr>`).join("")}</table>`}</div>`;
+    }
+    case "logo":
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" style="text-decoration:none;"><img src="${escapeHtml(block.props.imageUrl || "https://placehold.co/320x120?text=Logo")}" alt="${escapeHtml(block.props.alt || "Logo")}" style="display:inline-block;width:${Math.max(40, Number(block.props.width || 160))}px;max-width:100%;height:auto;" /></a></div>`;
+    case "social": {
+      const items = Array.isArray(block.props.items) ? block.props.items : [];
+      const icons = items.length ? items : [];
+      return `<div style="text-align:${align};"><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>${icons.map((item) => `<td style="padding:0 ${Math.max(4, Number(block.props.gap || 12) / 2)}px;"><a href="${escapeHtml(item.url || "#")}" style="display:inline-flex;width:${Number(block.props.iconSize || 32)}px;height:${Number(block.props.iconSize || 32)}px;border-radius:999px;background:#0f172a;color:#fff;align-items:center;justify-content:center;text-decoration:none;font-size:10px;font-weight:700;text-transform:uppercase;">${escapeHtml((item.network || "s")[0])}</a></td>`).join("")}</tr></table></div>`;
+    }
+    case "html":
+      return stripUnsafeHtml(block.props.html || "");
+    case "divider":
+      return `<hr style="border:none;border-top:${Math.max(1, Number(block.props.thickness || 1))}px solid ${block.props.color || "#e5e7eb"};width:${Math.min(100, Math.max(20, Number(block.props.width || 100)))}%;margin:${Number(block.props.spacingTop || 16)}px auto ${Number(block.props.spacingBottom || 16)}px;" />`;
+    case "product": {
+      const p = getCatalogProduct((block.props.productIds || [])[0]);
+      if (!p) return `<div style="padding:20px;border:1px dashed #cbd5e1;border-radius:18px;color:#64748b;">No product selected</div>`;
+      return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 auto 16px;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff;"><tr><td width="180" style="padding:0;vertical-align:top;">${block.props.showImage !== false ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" style="display:block;width:100%;height:180px;object-fit:cover;" />` : ""}</td><td style="padding:18px;vertical-align:top;"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8;font-weight:700;font-family:${paragraphFont};">Product</div>${block.props.showTitle !== false ? `<div style="margin-top:8px;font-size:18px;line-height:1.35;font-weight:700;color:#0f172a;font-family:${paragraphFont};">${escapeHtml(p.name)}</div>` : ""}${block.props.showPrice !== false ? `<div style="margin-top:12px;font-size:18px;font-weight:700;color:${settings.buttons.backgroundColor || "#111827"};">${money(p.price)}${block.props.showCompareAt && p.compareAtPrice ? `<span style="margin-left:8px;color:#94a3b8;text-decoration:line-through;">${money(p.compareAtPrice)}</span>` : ""}</div>` : ""}${block.props.showButton !== false ? `<div style="margin-top:16px;"><span style="display:inline-block;background:${settings.buttons.backgroundColor || "#111827"};color:${settings.buttons.fontColor || "#ffffff"};padding:10px 16px;border-radius:10px;font-size:14px;font-weight:700;font-family:${paragraphFont};">${escapeHtml(block.props.ctaLabel || "View product")}</span></div>` : ""}</td></tr></table>`;
+    }
+    case "navigation": {
+      const items = Array.isArray(block.props.items) ? block.props.items : [];
+      return `<nav style="text-align:${align};font-family:${paragraphFont};font-size:${Number(block.props.fontSize || 14)}px;color:${block.props.color || "#111827"};"><div style="display:inline-flex;flex-wrap:wrap;gap:${Number(block.props.gap || 20)}px;justify-content:${align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start"};">${items.map((item) => `<a href="${escapeHtml(item.url || "#")}" style="color:${block.props.color || "#111827"};text-decoration:none;font-weight:600;">${escapeHtml(item.label || "Link")}</a>`).join("")}</div></nav>`;
+    }
+    case "spacer":
+      return `<div style="height:${Number(block.props.height || 24)}px;"></div>`;
+    default:
+      return "";
   }
-  if (block.type === "product") {
-    const p = getCatalogProduct(block.props.productId);
-    if (!p) return "";
-    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 16px;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff;"><tr><td width="180" style="padding:0;vertical-align:top;"><img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" style="display:block;width:100%;height:180px;object-fit:cover;" /></td><td style="padding:18px;vertical-align:top;"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8;font-weight:700;">${escapeHtml(p.category)}</div><div style="margin-top:8px;font-size:18px;line-height:1.35;font-weight:700;color:#0f172a;">${escapeHtml(p.name)}</div>${block.props.showPrice !== false ? `<div style="margin-top:12px;font-size:18px;font-weight:700;color:${accent};">${money(p.price)}${block.props.showCompareAt && p.compareAtPrice ? `<span style="margin-left:8px;color:#94a3b8;text-decoration:line-through;">${money(p.compareAtPrice)}</span>` : ""}</div>` : ""}<div style="margin-top:16px;"><span style="display:inline-block;background:${accent};color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:700;">View product</span></div></td></tr></table>`;
-  }
-  if (block.type === "product_list") {
-    const products = (block.props.productIds || [])
-      .map((id) => getCatalogProduct(id))
-      .filter(Boolean)
-      .slice(0, Number(block.props.limit || 3));
-    const list = products.length
-      ? products
-      : productCatalog.slice(0, Number(block.props.limit || 3));
-    return `<div style="margin:24px 0 0;"><div style="font-size:20px;line-height:1.3;font-weight:700;color:#0f172a;margin:0 0 16px;">${escapeHtml(block.props.title || "Featured products")}</div>${list.map((p) => blockHtml({ type: "product", props: { productId: p.id, showPrice: true, showCompareAt: block.props.showCompareAt } }, accent)).join("")}</div>`;
-  }
-  if (block.type === "divider")
-    return `<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />`;
-  if (block.type === "spacer")
-    return `<div style="height:${Number(block.props.size || 24)}px;"></div>`;
-  return "";
 };
 
-const buildTemplateHtml = (form) =>
-  `<!doctype html><html><body style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f8fafc;padding:24px 12px;"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#fff;border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;"><tr><td style="padding:28px;">${(form.blocks || []).map((b) => blockHtml(b, form.accentColor || "#6d28d9")).join("") || "<p>No content blocks added yet.</p>"}</td></tr></table></td></tr></table></body></html>`;
+const buildTemplateHtml = (form) => {
+  const settings = form.styleSettings || cloneStyleSettings();
+  const bodyWidth = Math.max(320, Number(settings.layout.bodyWidth || 600));
+  const outerPadding = Math.max(0, Number(settings.spacing.padding || 28));
+  const emailPadding = settings.spacing.groupSides
+    ? `${outerPadding}px`
+    : `${outerPadding}px ${Math.max(16, Math.round(outerPadding * 0.6))}px`;
+  const backgroundImage = settings.background.imageUrl
+    ? `background-image:url('${escapeHtml(settings.background.imageUrl)}');background-size:cover;background-position:center;`
+    : "";
+  const direction = settings.text.direction === "rtl" ? "rtl" : "ltr";
+  const contentHtml = (form.blocks || []).map((block) => blockHtml(block, settings)).join("") || `<p style="margin:0;font-size:16px;line-height:1.7;color:#64748b;font-family:${settings.text.paragraphFont || "Arial"};">Drop content here.</p>`;
 
-const previewBlock = (block, accent) => {
-  const t = block.props.align || "left";
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { margin: 0; padding: 0; background: ${settings.background.color || "#f5f7fb"}; direction: ${direction}; }
+      a { color: ${settings.text.linkColor || "#2563eb"}; ${settings.text.linkStyle === "none" ? "text-decoration:none;" : settings.text.linkStyle === "underline" ? "text-decoration:underline;" : ""} }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:${settings.background.color || "#f5f7fb"};${backgroundImage}">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:${settings.background.color || "#f5f7fb"};padding:${outerPadding}px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:${bodyWidth}px;background:${settings.layout.bodyColor || "#ffffff"};border:1px solid #e5e7eb;border-radius:20px;overflow:hidden;">
+            <tr>
+              <td style="padding:${emailPadding};font-family:${settings.text.paragraphFont || "Arial"},sans-serif;">
+                ${settings.header.showBrowserLink ? `<p style="margin:0 0 18px;font-size:12px;color:#64748b;text-align:right;"><a href="#" style="color:${settings.text.linkColor || "#2563eb"};text-decoration:${settings.text.linkStyle === "none" ? "none" : "underline"};">View in browser</a></p>` : ""}
+                ${contentHtml}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+};
+
+const previewBlock = (block, settings) => {
+  const align = block.props.align || "left";
   const textAlign =
-    t === "center" ? "text-center" : t === "right" ? "text-right" : "text-left";
+    align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
+  const paragraphFont = settings.text.paragraphFont || "Arial";
+  const headingFont = settings.text.headingFont || paragraphFont;
+  const textColor = settings.text.fontColor || "#334155";
+  const bodySize = Number(settings.text.fontSize || 16);
+  const headingSize = Math.max(24, bodySize + 14);
+  const blockColor = block.props.color || textColor;
+
   if (block.type === "eyebrow")
-    return (
-      <p
-        className={`text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 ${textAlign}`}
-      >
-        {block.props.content || "Campaign update"}
-      </p>
-    );
+    return <p className={`font-semibold uppercase tracking-[0.22em] ${textAlign}`} style={{ fontFamily: paragraphFont, color: blockColor, fontSize: `${Number(block.props.fontSize || 12)}px` }}>{block.props.content || "Campaign update"}</p>;
   if (block.type === "heading")
     return (
-      <h4 className={`text-2xl font-semibold text-slate-900 ${textAlign}`}>
+      <h4 className={`font-semibold ${textAlign}`} style={{ fontFamily: headingFont, fontSize: `${Number(block.props.fontSize || headingSize)}px`, lineHeight: 1.15, color: block.props.color || "#0f172a" }}>
         {block.props.content || "Your latest update"}
       </h4>
     );
   if (block.type === "body" || block.type === "text")
-    return (
-      <p
-        className={`whitespace-pre-line text-sm leading-7 text-slate-600 ${textAlign}`}
-      >
-        {block.props.content || "Write your email copy here."}
-      </p>
-    );
+    return <p className={`whitespace-pre-line ${textAlign}`} style={{ fontFamily: paragraphFont, color: block.props.color || textColor, fontSize: `${Number(block.props.fontSize || bodySize)}px`, lineHeight: settings.text.lineHeight }}>{block.props.content || "Write your email copy here."}</p>;
   if (block.type === "image")
     return (
       <div>
@@ -230,49 +502,55 @@ const previewBlock = (block, accent) => {
           alt={block.props.alt || "Campaign banner"}
           className={`w-full object-cover ${block.props.rounded ? "rounded-3xl" : ""}`}
         />
-        {block.props.caption ? (
-          <p className="mt-2 text-center text-sm text-slate-500">
-            {block.props.caption}
-          </p>
-        ) : null}
+        {block.props.caption ? <p className="mt-2 text-center text-sm text-slate-500">{block.props.caption}</p> : null}
       </div>
     );
-  if (block.type === "button")
+  if (block.type === "button") {
+    const width = Math.min(100, Math.max(20, Number(block.props.width || settings.buttons.width || 50)));
+    const borderSize = Math.max(0, Number(block.props.borderSize ?? settings.buttons.borderSize ?? 0));
+    const backgroundColor = block.props.backgroundColor || settings.buttons.backgroundColor || "#111827";
+    const fontColor = block.props.fontColor || settings.buttons.fontColor || "#ffffff";
+    const radius = Number(block.props.radius || settings.buttons.roundedCorners || 12);
+    const fontSize = Number(block.props.fontSize || settings.buttons.fontSize || 16);
+    const paddingY = Number(block.props.paddingY || 12);
+    const paddingX = Number(block.props.paddingX || 20);
+    const marginY = Number(block.props.marginY || 15);
+    const buttonStyle = {
+      backgroundColor: block.props.style === "ghost" ? "transparent" : backgroundColor,
+      color: block.props.style === "ghost" ? backgroundColor : fontColor,
+      borderRadius: `${radius}px`,
+      fontFamily: settings.buttons.font || "Arial",
+      fontSize: `${fontSize}px`,
+      width: `${width}%`,
+      fontWeight: block.props.bold === false ? 500 : 700,
+      fontStyle: block.props.italic ? "italic" : "normal",
+      textDecoration: block.props.underline ? "underline" : "none",
+      border: `${borderSize}px solid ${block.props.borderColor || backgroundColor}`,
+      padding: `${paddingY}px ${paddingX}px`,
+      margin: `${marginY}px 0`,
+    };
     return (
       <div className={textAlign}>
-        <span
-          className={`inline-flex rounded-xl px-4 py-3 text-sm font-semibold ${block.props.style === "ghost" ? "border border-slate-300 bg-transparent text-slate-700" : "text-white"}`}
-          style={
-            block.props.style === "ghost"
-              ? { color: accent }
-              : { backgroundColor: accent }
-          }
-        >
+        <span className="inline-flex items-center justify-center px-4 py-3 text-sm" style={buttonStyle}>
           {block.props.text || "Click"}
         </span>
       </div>
     );
+  }
   if (block.type === "product") {
     const p = getCatalogProduct(block.props.productId);
-    if (!p)
-      return <p className="text-sm text-slate-500">No product selected</p>;
+    if (!p) return <p className="text-sm text-slate-500">No product selected</p>;
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-4">
         <div className="flex gap-3">
-          <img
-            src={p.imageUrl}
-            alt={p.name}
-            className="h-20 w-20 rounded-2xl object-cover"
-          />
+          <img src={p.imageUrl} alt={p.name} className="h-20 w-20 rounded-2xl object-cover" />
           <div className="flex-1">
             <p className="font-semibold text-slate-900">{p.name}</p>
             <p className="text-xs text-slate-500">{p.category}</p>
             <p className="mt-2 font-semibold text-slate-900">
               {money(p.price)}
               {block.props.showCompareAt && p.compareAtPrice ? (
-                <span className="ml-2 text-xs text-slate-400 line-through">
-                  {money(p.compareAtPrice)}
-                </span>
+                <span className="ml-2 text-xs text-slate-400 line-through">{money(p.compareAtPrice)}</span>
               ) : null}
             </p>
           </div>
@@ -281,41 +559,23 @@ const previewBlock = (block, accent) => {
     );
   }
   if (block.type === "product_list") {
-    const ids = (block.props.productIds || []).slice(
-      0,
-      Number(block.props.limit || 3),
-    );
+    const ids = (block.props.productIds || []).slice(0, Number(block.props.limit || 3));
     const products = ids.map((id) => getCatalogProduct(id)).filter(Boolean);
-    const list = products.length
-      ? products
-      : productCatalog.slice(0, Number(block.props.limit || 3));
+    const list = products.length ? products : productCatalog.slice(0, Number(block.props.limit || 3));
     return (
       <div className="rounded-3xl border border-slate-200 bg-white p-4">
-        <p className="text-sm font-semibold text-slate-900">
-          {block.props.title || "Featured products"}
-        </p>
+        <p className="text-sm font-semibold text-slate-900">{block.props.title || "Featured products"}</p>
         <div className="mt-3 space-y-3">
           {list.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-3 rounded-2xl border border-slate-100 p-3"
-            >
-              <img
-                src={p.imageUrl}
-                alt={p.name}
-                className="h-14 w-14 rounded-2xl object-cover"
-              />
+            <div key={p.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 p-3">
+              <img src={p.imageUrl} alt={p.name} className="h-14 w-14 rounded-2xl object-cover" />
               <div className="flex-1">
                 <p className="font-semibold text-slate-900">{p.name}</p>
                 <p className="text-xs text-slate-500">{p.category}</p>
               </div>
               <div className="text-right">
                 <p className="font-semibold text-slate-900">{money(p.price)}</p>
-                {block.props.showCompareAt ? (
-                  <p className="text-xs text-slate-400 line-through">
-                    {money(p.compareAtPrice)}
-                  </p>
-                ) : null}
+                {block.props.showCompareAt ? <p className="text-xs text-slate-400 line-through">{money(p.compareAtPrice)}</p> : null}
               </div>
             </div>
           ))}
@@ -323,93 +583,1118 @@ const previewBlock = (block, accent) => {
       </div>
     );
   }
-  if (block.type === "divider") return <hr className="my-6 border-slate-200" />;
-  if (block.type === "spacer")
-    return <div style={{ height: `${Number(block.props.size || 24)}px` }} />;
+  if (block.type === "divider")
+    return (
+      <hr
+        className="my-6 border-0"
+        style={{
+          borderTopStyle: "solid",
+          borderTopWidth: `${Math.max(1, Number(block.props.thickness || 1))}px`,
+          borderTopColor: block.props.color || "#e5e7eb",
+        }}
+      />
+    );
+  if (block.type === "spacer") return <div style={{ height: `${Number(block.props.size || 24)}px` }} />;
   return null;
+};
+
+const ControlCard = ({ title, description, children, className = "" }) => (
+  <section className={`rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)] ${className}`}>
+    <div className="mb-4">
+      <h3 className="text-[18px] font-semibold tracking-tight text-slate-900">{title}</h3>
+      {description ? <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p> : null}
+    </div>
+    {children}
+  </section>
+);
+
+const Field = ({ label, hint, children, className = "" }) => (
+  <label className={`block space-y-2 ${className}`}>
+    <span className="text-sm font-semibold text-slate-800">{label}</span>
+    {hint ? <span className="block text-xs leading-5 text-slate-500">{hint}</span> : null}
+    {children}
+  </label>
+);
+
+const ToggleGroup = ({ options, value, onChange, className = "" }) => (
+  <div className={`inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1 ${className}`}>
+    {options.map((option) => (
+      <button
+        key={option.value}
+        type="button"
+        onClick={() => onChange(option.value)}
+        className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+          value === option.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
+        }`}
+      >
+        {option.label}
+      </button>
+    ))}
+  </div>
+);
+
+const textBlockTypes = new Set(["title", "body_text"]);
+
+const CanvasDropZone = ({ active, label, onDragOver, onDrop }) => (
+  <div
+    className={`relative h-4 transition ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+    onDragOver={onDragOver}
+    onDrop={onDrop}
+  >
+    <div
+      className={`absolute left-0 right-0 top-1/2 h-[2px] -translate-y-1/2 rounded-full transition ${
+        active ? "bg-[#6d5efc]" : "bg-transparent"
+      }`}
+    />
+    {active ? (
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[calc(100%+6px)] rounded-full bg-[#6d5efc] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white shadow-sm">
+        {label}
+      </div>
+    ) : null}
+  </div>
+);
+
+const CanvasBlock = ({
+  block,
+  selected,
+  settings,
+  onSelect,
+  onUpdate,
+  onDragStart,
+  onDragEnd,
+}) => {
+  const align = block.props.align || "left";
+  const textAlign = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
+  const justify = align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start";
+  const sharedWrap = `group relative rounded-[24px] border bg-white p-4 transition cursor-grab ${
+    selected ? "border-[#6d5efc] ring-2 ring-[#6d5efc]/20" : "border-slate-200 hover:border-slate-300"
+  }`;
+  const fontSize = Number(block.props.fontSize || settings.text.fontSize || 16);
+  const fontFamily = block.type === "title" ? settings.text.headingFont || "Arial" : settings.text.paragraphFont || "Arial";
+  const color = block.props.color || settings.text.fontColor || "#334155";
+  const textStyle = {
+    fontFamily,
+    fontSize: `${fontSize}px`,
+    color,
+    lineHeight: settings.text.lineHeight,
+    fontWeight: block.type === "title" ? 700 : block.props.bold === false ? 400 : block.props.bold ? 700 : 400,
+    fontStyle: block.props.italic ? "italic" : "normal",
+    textDecoration: block.props.underline ? "underline" : "none",
+  };
+
+  const blockProps = {
+    draggable: true,
+    onDragStart: onDragStart(block.id),
+    onDragEnd,
+    onClick: onSelect,
+  };
+
+  if (block.type === "title") {
+    const titleStyle = {
+      ...textStyle,
+      fontSize: `${Number(block.props.fontSize || 34)}px`,
+      lineHeight: 1.15,
+      marginTop: `${Number(block.props.marginTop || 0)}px`,
+      marginBottom: `${Number(block.props.marginBottom || 14)}px`,
+    };
+
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck={false}
+          className="min-h-[40px] outline-none"
+          style={titleStyle}
+          onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
+        >
+          {block.props.content || "Your latest update"}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "body_text") {
+    const bodyStyle = {
+      ...textStyle,
+      fontSize: `${Number(block.props.fontSize || 16)}px`,
+      lineHeight: Number(block.props.lineHeight || 1.7),
+      fontWeight: block.props.bold ? 700 : 400,
+      fontStyle: block.props.italic ? "italic" : "normal",
+      textDecoration: block.props.underline ? "underline" : "none",
+      marginTop: `${Number(block.props.marginTop || 0)}px`,
+      marginBottom: `${Number(block.props.marginBottom || 14)}px`,
+    };
+
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck={false}
+          className="min-h-[48px] whitespace-pre-line outline-none"
+          style={bodyStyle}
+          onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
+        >
+          {block.props.content || "Write your email copy here."}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "video") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className={align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"}>
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
+            <img
+              src={block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80"}
+              alt={block.props.alt || "Video preview"}
+              className="block w-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-slate-900 shadow-lg">Play</span>
+            </div>
+          </div>
+          <p className="mt-2 text-sm text-slate-500">{block.props.caption || block.props.ctaLabel || "Play video"}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "logo") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className={align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"}>
+          {block.props.imageUrl ? (
+            <img
+              src={block.props.imageUrl}
+              alt={block.props.alt || "Logo"}
+              className="inline-block max-w-full"
+              style={{ width: `${Math.max(40, Number(block.props.width || 160))}px` }}
+            />
+          ) : (
+            <div className="inline-flex items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-500">
+              Logo
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "social") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className={`flex flex-wrap gap-3 ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}>
+          {(block.props.items || []).map((item, index) => (
+            <a
+              key={`${item.network || "social"}-${index}`}
+              href={item.url || "#"}
+              className="inline-flex items-center justify-center rounded-full bg-slate-900 text-xs font-bold uppercase text-white"
+              style={{ width: `${Number(block.props.iconSize || 32)}px`, height: `${Number(block.props.iconSize || 32)}px` }}
+            >
+              {(item.network || "s").slice(0, 2)}
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "navigation") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <nav className={`flex flex-wrap gap-4 ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`} style={{ color: block.props.color || "#111827", fontSize: `${Number(block.props.fontSize || 14)}px` }}>
+          {(block.props.items || []).map((item, index) => (
+            <a key={`${item.label || "link"}-${index}`} href={item.url || "#"} className="font-semibold text-slate-900 no-underline">
+              {item.label || "Link"}
+            </a>
+          ))}
+        </nav>
+      </div>
+    );
+  }
+
+  if (block.type === "html") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4" dangerouslySetInnerHTML={{ __html: stripUnsafeHtml(block.props.html || "") || '<div style="color:#94a3b8;">HTML block</div>' }} />
+      </div>
+    );
+  }
+
+  if (block.type === "dynamic_content") {
+    const products = productCatalog.slice(0, Number(block.props.itemCount || 3));
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className="mb-3 text-sm font-semibold text-slate-900">{block.props.sourceType || "recommendations"}</div>
+        <div className={`grid gap-3 ${block.props.layout === "list" ? "grid-cols-1" : "md:grid-cols-3"}`}>
+          {products.length ? products.map((product) => (
+            <div key={product.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              {block.props.showImage !== false ? <img src={product.imageUrl} alt={product.name} className="h-40 w-full object-cover" /> : null}
+              <div className="p-3">
+                {block.props.showTitle !== false ? <div className="font-semibold text-slate-900">{product.name}</div> : null}
+                {block.props.showPrice !== false ? <div className="mt-1 text-sm font-semibold text-slate-900">{money(product.price)}</div> : null}
+                {block.props.showButton !== false ? <div className="mt-3 inline-flex rounded-xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white">{block.props.ctaLabel || "View"}</div> : null}
+              </div>
+            </div>
+          )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">{block.props.fallbackText || "No items found"}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "product") {
+    const productIds = Array.isArray(block.props.productIds) ? block.props.productIds : [];
+    const product = productIds.map((id) => getCatalogProduct(id)).find(Boolean) || getCatalogProduct(productCatalog[0]?.id);
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        {product ? (
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+            {block.props.showImage !== false ? <img src={product.imageUrl} alt={product.name} className="h-48 w-full object-cover" /> : null}
+            <div className="p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Product</div>
+              {block.props.showTitle !== false ? <div className="mt-2 text-lg font-semibold text-slate-900">{product.name}</div> : null}
+              {block.props.showPrice !== false ? (
+                <div className="mt-2 text-base font-semibold text-slate-900">
+                  {money(product.price)}
+                  {block.props.showCompareAt && product.compareAtPrice ? <span className="ml-2 text-sm text-slate-400 line-through">{money(product.compareAtPrice)}</span> : null}
+                </div>
+              ) : null}
+              {block.props.showButton !== false ? <div className="mt-4 inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{block.props.ctaLabel || "View product"}</div> : null}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No product selected</div>
+        )}
+      </div>
+    );
+  }
+
+  if (block.type === "image") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className={textAlign}>
+          <img
+            src={block.props.imageUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80"}
+            alt={block.props.alt || "Campaign banner"}
+            className={`mx-auto w-full object-cover ${block.props.rounded ? "rounded-3xl" : ""}`}
+          />
+          {block.props.caption ? <p className="mt-2 text-sm text-slate-500">{block.props.caption}</p> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "button") {
+    const width = Math.min(100, Math.max(20, Number(block.props.width || settings.buttons.width || 50)));
+    const borderSize = Math.max(0, Number(block.props.borderSize ?? settings.buttons.borderSize ?? 0));
+    const backgroundColor = block.props.backgroundColor || settings.buttons.backgroundColor || "#111827";
+    const fontColor = block.props.fontColor || settings.buttons.fontColor || "#ffffff";
+    const radius = Number(block.props.radius || settings.buttons.roundedCorners || 12);
+    const buttonStyle = {
+      backgroundColor: block.props.style === "ghost" ? "transparent" : backgroundColor,
+      color: block.props.style === "ghost" ? backgroundColor : fontColor,
+      borderRadius: `${radius}px`,
+      fontFamily: settings.buttons.font || "Arial",
+      fontSize: `${Number(block.props.fontSize || settings.buttons.fontSize || 16)}px`,
+      width: `${width}%`,
+      fontWeight: block.props.bold === false ? 500 : 700,
+      fontStyle: block.props.italic ? "italic" : "normal",
+      textDecoration: block.props.underline ? "underline" : "none",
+      border: `${borderSize}px solid ${block.props.borderColor || backgroundColor}`,
+      padding: `${Number(block.props.paddingY || 12)}px ${Number(block.props.paddingX || 20)}px`,
+      margin: `${Number(block.props.marginY || 15)}px 0`,
+    };
+
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div className={justify}>
+          <span className="inline-flex items-center justify-center text-sm" style={buttonStyle}>
+            {block.props.text || "Click"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "divider") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <hr
+          className="border-0"
+          style={{
+            borderTopStyle: "solid",
+            borderTopWidth: `${Math.max(1, Number(block.props.thickness || 1))}px`,
+            borderTopColor: block.props.color || "#e5e7eb",
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (block.type === "spacer") {
+    return (
+      <div className={sharedWrap} {...blockProps}>
+        <div style={{ height: `${Number(block.props.size || 24)}px` }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className={sharedWrap} {...blockProps}>
+      <div
+        suppressContentEditableWarning
+        contentEditable
+        spellCheck={false}
+        className={`min-h-[36px] outline-none ${textAlign}`}
+        style={textStyle}
+        onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
+      >
+        {block.props.content || "Write your email copy here."}
+      </div>
+    </div>
+  );
+};
+
+const BlockInspector = ({
+  block,
+  onUpdate,
+  onDuplicate,
+  onRemove,
+  onClearSelection,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}) => {
+  if (!block) return null;
+
+  const update = (patch) => onUpdate(block.id, patch);
+  const title = blockDefinitions[block.type]?.label || block.type;
+
+  const wrap = (body, description = "Click a block in the canvas and adjust its settings.") => (
+    <ControlCard title={title} description={description}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+          {block.type}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={onClearSelection}>
+            Clear
+          </button>
+          <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => onDuplicate(block.id)}>
+            Duplicate
+          </button>
+          <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => onRemove(block.id)}>
+            Delete
+          </button>
+        </div>
+      </div>
+      <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+        <button type="button" className="font-semibold text-slate-700 disabled:opacity-40" onClick={onMoveUp} disabled={!canMoveUp}>
+          Move up
+        </button>
+        <button type="button" className="font-semibold text-slate-700 disabled:opacity-40" onClick={onMoveDown} disabled={!canMoveDown}>
+          Move down
+        </button>
+      </div>
+      {body}
+    </ControlCard>
+  );
+
+  if (block.type === "title") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Title text">
+          <textarea className="field min-h-[120px] resize-y" value={block.props.content || ""} onChange={(event) => update({ content: event.target.value })} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "left"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <Field label="Font size">
+            <input className="field" type="number" min="18" max="80" value={block.props.fontSize || 34} onChange={(event) => update({ fontSize: Number(event.target.value || 34) })} />
+          </Field>
+          <Field label="Color">
+            <input className="field h-12 p-1" type="color" value={block.props.color || "#0f172a"} onChange={(event) => update({ color: event.target.value })} />
+          </Field>
+        </div>
+      </div>,
+      "Primary headline only."
+    );
+  }
+
+  if (block.type === "body_text") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Body copy">
+          <textarea className="field min-h-[140px] resize-y" value={block.props.content || ""} onChange={(event) => update({ content: event.target.value })} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "left"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <Field label="Font size">
+            <input className="field" type="number" min="12" max="60" value={block.props.fontSize || 16} onChange={(event) => update({ fontSize: Number(event.target.value || 16) })} />
+          </Field>
+          <Field label="Color">
+            <input className="field h-12 p-1" type="color" value={block.props.color || "#334155"} onChange={(event) => update({ color: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr]">
+          {[
+            ["bold", "B"],
+            ["italic", "I"],
+            ["underline", "U"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => update({ [key]: !Boolean(block.props[key]) })}
+              className={`inline-flex h-11 items-center justify-center rounded-2xl border text-sm font-semibold transition ${
+                block.props[key] ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Field label="Line height">
+          <ToggleGroup
+            value={String(block.props.lineHeight || 1.7)}
+            onChange={(value) => update({ lineHeight: Number(value) })}
+            options={[
+              { value: "1.4", label: "Compact" },
+              { value: "1.7", label: "Normal" },
+              { value: "2", label: "Relaxed" },
+            ]}
+          />
+        </Field>
+      </div>,
+      "Paragraph copy with inline formatting."
+    );
+  }
+
+  if (block.type === "image") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Image URL">
+          <input className="field" value={block.props.imageUrl || ""} onChange={(event) => update({ imageUrl: event.target.value })} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Alt text">
+            <input className="field" value={block.props.alt || ""} onChange={(event) => update({ alt: event.target.value })} />
+          </Field>
+          <Field label="Link URL">
+            <input className="field" value={block.props.linkUrl || ""} onChange={(event) => update({ linkUrl: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Width">
+            <input className="field" type="number" min="20" max="100" value={block.props.width || 100} onChange={(event) => update({ width: Number(event.target.value || 100) })} />
+          </Field>
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "center"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <Field label="Caption">
+            <input className="field" value={block.props.caption || ""} onChange={(event) => update({ caption: event.target.value })} />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "video") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Video URL">
+          <input className="field" value={block.props.videoUrl || ""} onChange={(event) => update({ videoUrl: event.target.value })} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Thumbnail URL">
+            <input className="field" value={block.props.thumbnailUrl || ""} onChange={(event) => update({ thumbnailUrl: event.target.value })} />
+          </Field>
+          <Field label="Play label">
+            <input className="field" value={block.props.ctaLabel || ""} onChange={(event) => update({ ctaLabel: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "center"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <Field label="Caption">
+            <input className="field" value={block.props.caption || ""} onChange={(event) => update({ caption: event.target.value })} />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "button") {
+    return wrap(
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Button label">
+            <input className="field" value={block.props.text || ""} onChange={(event) => update({ text: event.target.value })} />
+          </Field>
+          <Field label="URL">
+            <input className="field" value={block.props.url || ""} onChange={(event) => update({ url: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "center"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+          <Field label="Width">
+            <input className="field" type="number" min="20" max="100" value={block.props.width || 50} onChange={(event) => update({ width: Number(event.target.value || 50) })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Background color">
+            <input className="field h-12 p-1" type="color" value={block.props.backgroundColor || "#111827"} onChange={(event) => update({ backgroundColor: event.target.value })} />
+          </Field>
+          <Field label="Text color">
+            <input className="field h-12 p-1" type="color" value={block.props.fontColor || "#ffffff"} onChange={(event) => update({ fontColor: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Radius">
+            <input className="field" type="number" min="0" max="40" value={block.props.radius || 12} onChange={(event) => update({ radius: Number(event.target.value || 12) })} />
+          </Field>
+          <Field label="Padding Y">
+            <input className="field" type="number" min="4" max="40" value={block.props.paddingY || 12} onChange={(event) => update({ paddingY: Number(event.target.value || 12) })} />
+          </Field>
+          <Field label="Padding X">
+            <input className="field" type="number" min="8" max="48" value={block.props.paddingX || 20} onChange={(event) => update({ paddingX: Number(event.target.value || 20) })} />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "dynamic_content") {
+    return wrap(
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Source">
+            <select className="field" value={block.props.sourceType || "recommendations"} onChange={(event) => update({ sourceType: event.target.value })}>
+              <option value="recommendations">Recommendations</option>
+              <option value="collection">Collection</option>
+              <option value="rule">Rule based</option>
+            </select>
+          </Field>
+          <Field label="Source query">
+            <input className="field" value={block.props.sourceQuery || ""} onChange={(event) => update({ sourceQuery: event.target.value })} />
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Item count">
+            <input className="field" type="number" min="1" max="12" value={block.props.itemCount || 3} onChange={(event) => update({ itemCount: Number(event.target.value || 3) })} />
+          </Field>
+          <Field label="Layout">
+            <select className="field" value={block.props.layout || "grid"} onChange={(event) => update({ layout: event.target.value })}>
+              <option value="grid">Grid</option>
+              <option value="list">List</option>
+            </select>
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            ["showImage", "Show image"],
+            ["showTitle", "Show title"],
+            ["showPrice", "Show price"],
+            ["showButton", "Show button"],
+          ].map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <span className="font-semibold text-slate-900">{label}</span>
+              <input type="checkbox" checked={block.props[key] !== false} onChange={(event) => update({ [key]: event.target.checked })} />
+            </label>
+          ))}
+        </div>
+        <Field label="Fallback text">
+          <input className="field" value={block.props.fallbackText || ""} onChange={(event) => update({ fallbackText: event.target.value })} />
+        </Field>
+      </div>
+    );
+  }
+
+  if (block.type === "logo") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Logo URL">
+          <input className="field" value={block.props.imageUrl || ""} onChange={(event) => update({ imageUrl: event.target.value })} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Alt text">
+            <input className="field" value={block.props.alt || ""} onChange={(event) => update({ alt: event.target.value })} />
+          </Field>
+          <Field label="Link URL">
+            <input className="field" value={block.props.linkUrl || ""} onChange={(event) => update({ linkUrl: event.target.value })} />
+          </Field>
+          <Field label="Width">
+            <input className="field" type="number" min="40" max="400" value={block.props.width || 160} onChange={(event) => update({ width: Number(event.target.value || 160) })} />
+          </Field>
+        </div>
+        <Field label="Alignment">
+          <ToggleGroup
+            value={block.props.align || "left"}
+            onChange={(value) => update({ align: value })}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+              { value: "right", label: "Right" },
+            ]}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (block.type === "social") {
+    const items = Array.isArray(block.props.items) ? block.props.items : [];
+    const updateItem = (index, patch) => {
+      const next = items.map((item, currentIndex) => (currentIndex === index ? { ...item, ...patch } : item));
+      update({ items: next });
+    };
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Alignment">
+          <ToggleGroup
+            value={block.props.align || "left"}
+            onChange={(value) => update({ align: value })}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+              { value: "right", label: "Right" },
+            ]}
+          />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Icon size">
+            <input className="field" type="number" min="20" max="60" value={block.props.iconSize || 32} onChange={(event) => update({ iconSize: Number(event.target.value || 32) })} />
+          </Field>
+          <Field label="Spacing">
+            <input className="field" type="number" min="4" max="24" value={block.props.gap || 12} onChange={(event) => update({ gap: Number(event.target.value || 12) })} />
+          </Field>
+        </div>
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <div key={`${item.network || "social"}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid gap-3 md:grid-cols-[140px_1fr_auto]">
+                <select className="field" value={item.network || "instagram"} onChange={(event) => updateItem(index, { network: event.target.value })}>
+                  {socialNetworks.map((network) => (
+                    <option key={network} value={network}>
+                      {network}
+                    </option>
+                  ))}
+                </select>
+                <input className="field" value={item.url || ""} onChange={(event) => updateItem(index, { url: event.target.value })} placeholder="https://..." />
+                <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => update({ items: items.filter((_, currentIndex) => currentIndex !== index) })}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="secondary-button px-4 py-2 text-sm" onClick={() => update({ items: [...items, { network: "instagram", url: "" }] })}>
+            Add icon
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "html") {
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Raw HTML">
+          <textarea className="field min-h-[220px] resize-y font-mono text-xs" value={block.props.html || ""} onChange={(event) => update({ html: event.target.value })} />
+        </Field>
+        <Field label="Preview mode">
+          <ToggleGroup
+            value={block.props.previewMode || "safe"}
+            onChange={(value) => update({ previewMode: value })}
+            options={[
+              { value: "safe", label: "Safe" },
+              { value: "raw", label: "Raw" },
+            ]}
+          />
+        </Field>
+      </div>
+    );
+  }
+
+  if (block.type === "divider") {
+    return wrap(
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Thickness">
+            <input className="field" type="number" min="1" max="8" value={block.props.thickness || 1} onChange={(event) => update({ thickness: Number(event.target.value || 1) })} />
+          </Field>
+          <Field label="Width">
+            <input className="field" type="number" min="20" max="100" value={block.props.width || 100} onChange={(event) => update({ width: Number(event.target.value || 100) })} />
+          </Field>
+          <Field label="Alignment">
+            <select className="field" value={block.props.align || "center"} onChange={(event) => update({ align: event.target.value })}>
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
+          </Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Color">
+            <input className="field h-12 p-1" type="color" value={block.props.color || "#e5e7eb"} onChange={(event) => update({ color: event.target.value })} />
+          </Field>
+          <Field label="Top spacing">
+            <input className="field" type="number" min="0" max="48" value={block.props.spacingTop || 16} onChange={(event) => update({ spacingTop: Number(event.target.value || 16) })} />
+          </Field>
+          <Field label="Bottom spacing">
+            <input className="field" type="number" min="0" max="48" value={block.props.spacingBottom || 16} onChange={(event) => update({ spacingBottom: Number(event.target.value || 16) })} />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "product") {
+    const items = Array.isArray(block.props.productIds) ? block.props.productIds : [productCatalog[0]?.id || ""];
+    return wrap(
+      <div className="space-y-4">
+        <div className="space-y-3">
+          {items.map((productId, index) => (
+            <div key={`${productId || "product"}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_auto]">
+              <select className="field" value={productId || ""} onChange={(event) => update({ productIds: items.map((item, currentIndex) => (currentIndex === index ? event.target.value : item)) })}>
+                {productCatalog.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} - {money(product.price)}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => update({ productIds: items.filter((_, currentIndex) => currentIndex !== index) })}>
+                Remove
+              </button>
+            </div>
+          ))}
+          <button type="button" className="secondary-button px-4 py-2 text-sm" onClick={() => update({ productIds: [...items, productCatalog[0]?.id || ""] })}>
+            Add product
+          </button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            ["showImage", "Show image"],
+            ["showTitle", "Show title"],
+            ["showPrice", "Show price"],
+            ["showCompareAt", "Show compare-at"],
+            ["showButton", "Show button"],
+          ].map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <span className="font-semibold text-slate-900">{label}</span>
+              <input type="checkbox" checked={block.props[key] !== false} onChange={(event) => update({ [key]: event.target.checked })} />
+            </label>
+          ))}
+        </div>
+        <Field label="CTA label">
+          <input className="field" value={block.props.ctaLabel || ""} onChange={(event) => update({ ctaLabel: event.target.value })} />
+        </Field>
+      </div>
+    );
+  }
+
+  if (block.type === "navigation") {
+    const items = Array.isArray(block.props.items) ? block.props.items : [];
+    const updateItem = (index, patch) => {
+      const next = items.map((item, currentIndex) => (currentIndex === index ? { ...item, ...patch } : item));
+      update({ items: next });
+    };
+    return wrap(
+      <div className="space-y-4">
+        <Field label="Alignment">
+          <ToggleGroup
+            value={block.props.align || "center"}
+            onChange={(value) => update({ align: value })}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+              { value: "right", label: "Right" },
+            ]}
+          />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Spacing">
+            <input className="field" type="number" min="4" max="40" value={block.props.gap || 20} onChange={(event) => update({ gap: Number(event.target.value || 20) })} />
+          </Field>
+          <Field label="Font size">
+            <input className="field" type="number" min="10" max="24" value={block.props.fontSize || 14} onChange={(event) => update({ fontSize: Number(event.target.value || 14) })} />
+          </Field>
+        </div>
+        <Field label="Color">
+          <input className="field h-12 p-1" type="color" value={block.props.color || "#111827"} onChange={(event) => update({ color: event.target.value })} />
+        </Field>
+        <div className="space-y-3">
+          {items.map((item, index) => (
+            <div key={`${item.label || "nav"}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <input className="field" value={item.label || ""} onChange={(event) => updateItem(index, { label: event.target.value })} placeholder="Label" />
+                <input className="field" value={item.url || ""} onChange={(event) => updateItem(index, { url: event.target.value })} placeholder="https://..." />
+                <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => update({ items: items.filter((_, currentIndex) => currentIndex !== index) })}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="secondary-button px-4 py-2 text-sm" onClick={() => update({ items: [...items, { label: "New link", url: "#" }] })}>
+            Add item
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (block.type === "spacer") {
+    return wrap(
+      <Field label="Spacer height">
+        <input className="field" type="number" min="8" max="160" value={block.props.height || 24} onChange={(event) => update({ height: Number(event.target.value || 24) })} />
+      </Field>
+    );
+  }
+
+  return wrap(
+    <div className="space-y-4">
+      <Field label="Block data">
+        <textarea className="field min-h-[120px] resize-y font-mono text-xs" value={JSON.stringify(block.props, null, 2)} readOnly />
+      </Field>
+    </div>
+  );
 };
 
 function EmailBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useContext(ToastContext);
-  const [form, setForm] = useState(initialForm());
+  const [searchParams] = useSearchParams();
+  const initialMode = searchParams.get("mode") === "html" ? "html" : "builder";
+  const [form, setForm] = useState(() => createInitialForm(initialMode));
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(Boolean(id));
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [dragId, setDragId] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(initialMode === "html");
+  const [activePanel, setActivePanel] = useState("content");
+  const [contentTab, setContentTab] = useState("blocks");
+  const [viewportMode, setViewportMode] = useState("desktop");
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [lastSavedSignature, setLastSavedSignature] = useState("");
+  const [paletteDragType, setPaletteDragType] = useState("");
+  const [dropIndex, setDropIndex] = useState(-1);
+  const [selectedBlockId, setSelectedBlockId] = useState("");
+  const actionMenuRef = useRef(null);
+  const bgImageInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!id) {
+      setLastSavedSignature(JSON.stringify(form));
+    }
+  }, []);
 
   useEffect(() => {
     if (!id) return;
     (async () => {
+      setIsLoading(true);
       try {
         const { data } = await api.get(`/templates/${id}`);
-        setForm(mapTemplateToForm(data));
+        const mapped = mapTemplateToForm(data, initialMode);
+        setForm(mapped);
+        setShowAdvanced(Boolean(mapped.advancedHtml?.trim()) || initialMode === "html");
+        setLastSavedSignature(JSON.stringify(mapped));
+      } catch (requestError) {
+        setError(requestError.response?.data?.message || "Unable to load template");
       } finally {
         setIsLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, initialMode]);
+
+  useEffect(() => {
+    if (!showActionMenu) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setShowActionMenu(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setShowActionMenu(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showActionMenu]);
 
   const generatedHtml = useMemo(() => buildTemplateHtml(form), [form]);
-  const updateForm = (key, value) =>
-    setForm((current) => ({ ...current, [key]: value }));
+  const serializedForm = useMemo(() => JSON.stringify(form), [form]);
+  const hasUnsavedChanges = serializedForm !== lastSavedSignature;
+  const currentSettings = form.styleSettings || cloneStyleSettings();
+
+  const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const updateStyle = (section, key, value) =>
+    setForm((current) => ({
+      ...current,
+      styleSettings: {
+        ...(current.styleSettings || cloneStyleSettings()),
+        [section]: {
+          ...((current.styleSettings || cloneStyleSettings())[section] || {}),
+          [key]: value,
+        },
+      },
+    }));
+
   const updateBlock = (blockId, patch) =>
     setForm((current) => ({
       ...current,
       blocks: current.blocks.map((block) =>
-        block.id === blockId
-          ? { ...block, props: { ...block.props, ...patch } }
-          : block,
+        block.id === blockId ? { ...block, props: { ...block.props, ...patch } } : block,
       ),
     }));
-  const addBlock = (type) => {
-    const next = {
-      eyebrow: () => textBlock("eyebrow", "Campaign update"),
-      heading: () => textBlock("heading", "Your latest update"),
-      text: () => textBlock("body", "Write your email copy here."),
-      image: imageBlock,
-      button: buttonBlock,
-      product: productBlock,
-      product_list: productListBlock,
-      divider: dividerBlock,
-      spacer: spacerBlock,
-    }[type]();
-    setForm((current) => ({ ...current, blocks: [...current.blocks, next] }));
+
+  const insertBlockAt = (type, index = form.blocks.length) => {
+    const next = createBlockByType(type);
+
+    setActivePanel("content");
+    setContentTab("blocks");
+    setSelectedBlockId(next.id);
+    setForm((current) => {
+      const nextBlocks = [...current.blocks];
+      nextBlocks.splice(Math.min(Math.max(0, index), nextBlocks.length), 0, next);
+      return { ...current, blocks: nextBlocks };
+    });
   };
+
+  const addBlock = (type) => insertBlockAt(type);
+
+  const moveBlockToIndex = (blockId, targetIndex) =>
+    setForm((current) => {
+      const fromIndex = current.blocks.findIndex((block) => block.id === blockId);
+      if (fromIndex < 0) return current;
+      const next = [...current.blocks];
+      const [item] = next.splice(fromIndex, 1);
+      const normalizedIndex = Math.max(0, Math.min(targetIndex, next.length));
+      next.splice(normalizedIndex, 0, item);
+      return { ...current, blocks: next };
+    });
+
+  const handlePaletteDragStart = (type) => (event) => {
+    setPaletteDragType(type);
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("application/x-email-block", JSON.stringify({ kind: "palette", type }));
+  };
+
+  const handlePaletteDragEnd = () => {
+    setPaletteDragType("");
+    setDropIndex(-1);
+  };
+
+  const handleBlockDragStart = (blockId) => (event) => {
+    setDragId(blockId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-email-block", JSON.stringify({ kind: "canvas", id: blockId }));
+  };
+
+  const handleBlockDragEnd = () => {
+    setDragId("");
+    setDropIndex(-1);
+  };
+
+  const handleDropAtIndex = (index) => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const raw = event.dataTransfer.getData("application/x-email-block");
+    if (!raw) return;
+
+    try {
+      const payload = JSON.parse(raw);
+      if (payload.kind === "palette" && payload.type) {
+        insertBlockAt(payload.type, index);
+      } else if (payload.kind === "canvas" && payload.id) {
+        moveBlockToIndex(payload.id, index);
+      }
+    } catch {
+      // Ignore malformed drag payloads.
+    } finally {
+      setDragId("");
+      setPaletteDragType("");
+      setDropIndex(-1);
+    }
+  };
+
+  const insertSection = (section) => {
+    const blocks = section.build().map((block) => ({ ...block, id: block.id || uid() }));
+    setActivePanel("content");
+    setContentTab("sections");
+    setSelectedBlockId(blocks[0]?.id || "");
+    setForm((current) => ({ ...current, blocks: [...current.blocks, ...blocks] }));
+  };
+
   const removeBlock = (blockId) =>
     setForm((current) => ({
       ...current,
-      blocks: current.blocks.filter((b) => b.id !== blockId),
+      blocks: current.blocks.filter((block) => block.id !== blockId),
     }));
+
   const moveBlock = (blockId, direction) =>
     setForm((current) => {
-      const i = current.blocks.findIndex((b) => b.id === blockId);
-      const j = i + direction;
-      if (i < 0 || j < 0 || j >= current.blocks.length) return current;
+      const index = current.blocks.findIndex((block) => block.id === blockId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.blocks.length) return current;
       const next = [...current.blocks];
-      const [item] = next.splice(i, 1);
-      next.splice(j, 0, item);
+      const [item] = next.splice(index, 1);
+      next.splice(nextIndex, 0, item);
       return { ...current, blocks: next };
     });
+
   const duplicateBlock = (blockId) =>
     setForm((current) => {
-      const i = current.blocks.findIndex((b) => b.id === blockId);
-      if (i < 0) return current;
+      const index = current.blocks.findIndex((block) => block.id === blockId);
+      if (index < 0) return current;
       const copy = {
-        ...current.blocks[i],
+        ...current.blocks[index],
         id: uid(),
-        props: { ...current.blocks[i].props },
+        props: { ...current.blocks[index].props },
       };
       const next = [...current.blocks];
-      next.splice(i + 1, 0, copy);
+      next.splice(index + 1, 0, copy);
       return { ...current, blocks: next };
     });
+
   const reorder = (fromId, toId) =>
     setForm((current) => {
-      const from = current.blocks.findIndex((b) => b.id === fromId);
-      const to = current.blocks.findIndex((b) => b.id === toId);
+      const from = current.blocks.findIndex((block) => block.id === fromId);
+      const to = current.blocks.findIndex((block) => block.id === toId);
       if (from < 0 || to < 0 || from === to) return current;
       const next = [...current.blocks];
       const [item] = next.splice(from, 1);
@@ -417,501 +1702,933 @@ function EmailBuilderPage() {
       return { ...current, blocks: next };
     });
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const saveTemplate = async ({ quit = false } = {}) => {
     setError("");
-    if (!form.name.trim() || !form.subject.trim())
-      return setError("Builder name and subject are required");
-    if (!form.blocks.length) return setError("Add at least one content block");
-    setIsSubmitting(true);
+    const subject = form.subject.trim() || form.name.trim() || "Untitled template";
+    if (!form.name.trim()) {
+      setError("Template name is required");
+      return false;
+    }
+    if (!form.blocks.length && !form.advancedHtml.trim()) {
+      setError("Add at least one block or paste custom HTML");
+      return false;
+    }
+
+    setIsSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
-        subject: form.subject.trim(),
+        subject,
         previewText: form.previewText.trim(),
         htmlContent: form.advancedHtml.trim() || generatedHtml,
         designJson: {
-          editor: "block-builder",
+          editor: "drag-drop",
           accentColor: form.accentColor,
+          styleSettings: form.styleSettings,
           blocks: form.blocks,
         },
       };
+
       if (id) {
         await api.put(`/templates/${id}`, payload);
-        toast.success("Builder updated");
-      } else {
-        await api.post("/templates", payload);
-        toast.success("Builder saved");
+        toast.success("Template saved");
+        setLastSavedSignature(serializedForm);
+        if (quit) navigate("/templates");
+        return true;
       }
-      navigate("/templates");
+
+      const { data: created } = await api.post("/templates", payload);
+      toast.success("Template created");
+      setLastSavedSignature(serializedForm);
+
+      if (quit) {
+        navigate("/templates");
+      } else if (created?._id) {
+        navigate(`/email-builder/${created._id}`, { replace: true });
+      }
+
+      return true;
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.message || "Unable to save builder",
-      );
+      setError(requestError.response?.data?.message || "Unable to save template");
+      toast.error("Unable to save template");
+      return false;
     } finally {
-      setIsSubmitting(false);
+      setIsSaving(false);
     }
+  };
+
+  const exportPdf = async () => {
+    try {
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.srcdoc = form.advancedHtml.trim() || generatedHtml;
+      document.body.appendChild(iframe);
+      iframe.onload = () => {
+        const frameWindow = iframe.contentWindow;
+        frameWindow?.focus();
+        frameWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
+      };
+      setShowActionMenu(false);
+    } catch {
+      toast.error("Unable to export PDF");
+    }
+  };
+
+  const handleBgImagePick = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => updateStyle("background", "imageUrl", String(reader.result || ""));
+    reader.readAsDataURL(file);
+    event.target.value = "";
   };
 
   if (isLoading) return <LoadingState message="Loading email builder..." />;
 
+  const previewWidth = viewportMode === "mobile" ? 390 : currentSettings.layout.bodyWidth || 600;
+  const selectedBlock = form.blocks.find((block) => block.id === selectedBlockId) || null;
+
   return (
-    <div className="space-y-6">
-      <section className="shell-card p-6 md:p-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <PageHeader
-            
-            title={id ? "Edit email builder" : "Create email builder"}
-            description="Build reusable campaign emails with drag-and-drop blocks, product cards, and auto-priced product lists."
-          />
-        </div>
-      </section>
-
-      <form
-        className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]"
-        onSubmit={handleSubmit}
-      >
-        <section className="shell-card space-y-6 p-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <input
-              className="field"
-              placeholder="Builder name"
-              value={form.name}
-              onChange={(e) => updateForm("name", e.target.value)}
-            />
-            <input
-              className="field"
-              placeholder="Subject"
-              value={form.subject}
-              onChange={(e) => updateForm("subject", e.target.value)}
-            />
-          </div>
-          <input
-            className="field"
-            placeholder="Preview text"
-            value={form.previewText}
-            onChange={(e) => updateForm("previewText", e.target.value)}
-          />
-
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  Block builder
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Drag blocks to reorder. Add text, images, CTAs, product cards,
-                  and dynamic product lists.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {blockTypesInOrder.map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => addBlock(type)}
-                  >
-                    + {blockLabel[type]}
-                  </button>
-                ))}
+    <div className="min-h-screen bg-[#f7f2e9] p-3 md:p-4">
+      <div className="mx-auto flex h-[calc(100vh-24px)] max-w-[1800px] flex-col gap-4 overflow-hidden md:h-[calc(100vh-32px)]">
+        <header className="rounded-[30px] border border-[#e6ddd1] bg-white/95 px-4 py-3 shadow-[0_18px_42px_rgba(15,23,42,0.06)] backdrop-blur">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate("/templates")}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#e6ddd1] bg-[#fbf7f0] text-slate-700 transition hover:bg-[#f2ebdf]"
+                aria-label="Back to templates"
+              >
+                <BackArrowIcon />
+              </button>
+              <div className="min-w-0">
+                <input
+                  className="w-full max-w-[340px] border-0 bg-transparent p-0 text-[20px] font-semibold tracking-tight text-slate-900 outline-none placeholder:text-slate-400"
+                  placeholder="Untitled template"
+                  value={form.name}
+                  onChange={(event) => updateForm("name", event.target.value)}
+                />
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                  <span className="rounded-full bg-[#f5efe7] px-3 py-1 text-[#8b5e34]">
+                    {hasUnsavedChanges ? "Unsaved changes" : "No unsaved changes"}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="mt-5 space-y-4">
-              {form.blocks.map((block, index) => (
-                <article
-                  key={block.id}
-                  draggable
-                  onDragStart={() => setDragId(block.id)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() =>
-                    dragId && (reorder(dragId, block.id), setDragId(""))
-                  }
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex items-start gap-3">
-                      <span className="cursor-move rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold tracking-[0.18em] text-slate-500">
-                        DRAG
+            <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+              <ToggleGroup
+                className="hidden md:inline-flex"
+                value={viewportMode}
+                onChange={setViewportMode}
+                options={[
+                  {
+                    value: "desktop",
+                    label: (
+                      <span className="inline-flex items-center gap-2">
+                        <DesktopIcon />
+                        Desktop
                       </span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {blockLabel[block.type] || block.type}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {block.type === "product_list"
-                            ? "Dynamic pricing and auto-selected products"
-                            : "Editable content block"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600"
-                        onClick={() => moveBlock(block.id, -1)}
-                        disabled={index === 0}
-                      >
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600"
-                        onClick={() => moveBlock(block.id, 1)}
-                        disabled={index === form.blocks.length - 1}
-                      >
-                        Down
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600"
-                        onClick={() => duplicateBlock(block.id)}
-                      >
-                        Duplicate
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-xl border border-rose-200 px-3 py-2 text-xs font-medium text-rose-600"
-                        onClick={() => removeBlock(block.id)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
+                    ),
+                  },
+                  {
+                    value: "mobile",
+                    label: (
+                      <span className="inline-flex items-center gap-2">
+                        <MobileIcon />
+                        Mobile
+                      </span>
+                    ),
+                  },
+                ]}
+              />
 
-                  <div className="mt-4 grid gap-4">
-                    {["eyebrow", "heading", "text", "body"].includes(
-                      block.type,
-                    ) ? (
-                      <div className="grid gap-3 md:grid-cols-[1fr_160px]">
-                        <textarea
-                          className="field min-h-[120px] resize-y"
-                          value={block.props.content || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { content: e.target.value })
-                          }
-                        />
-                        <select
-                          className="field md:self-start md:h-[48px]"
-                          value={block.props.align || "left"}
-                          onChange={(e) =>
-                            updateBlock(block.id, { align: e.target.value })
-                          }
+              <button type="button" className="secondary-button" onClick={() => {}}>
+                Preview & test
+              </button>
+
+              <button
+                type="button"
+                onClick={() => saveTemplate({ quit: true })}
+                className="rounded-full bg-[#20242f] px-5 py-3 text-[15px] font-semibold text-white shadow-[0_14px_28px_rgba(32,36,47,0.2)] transition hover:bg-[#151822]"
+                disabled={isSaving}
+              >
+                Save & quit
+              </button>
+
+              <div className="relative" ref={actionMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowActionMenu((current) => !current)}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#e6ddd1] bg-white text-slate-700 transition hover:bg-[#f7f3ec]"
+                  aria-label="More actions"
+                  aria-expanded={showActionMenu}
+                >
+                  <DotsIcon />
+                </button>
+
+                {showActionMenu ? (
+                  <div className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-3xl border border-[#e6ddd1] bg-white shadow-[0_22px_48px_rgba(15,23,42,0.14)]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowActionMenu(false);
+                        saveTemplate();
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f7f3ec]"
+                    >
+                      <SaveIcon />
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportPdf}
+                      className="flex w-full items-center gap-3 border-t border-[#efe7dc] px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:bg-[#f7f3ec]"
+                    >
+                      <PdfIcon />
+                      Save as PDF
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="grid min-h-0 flex-1 gap-4 overflow-hidden xl:grid-cols-[380px_minmax(0,1fr)]">
+        <aside className="min-h-0 space-y-4 overflow-y-auto pr-1 xl:max-h-[calc(100vh-136px)]">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePanel("content")}
+                className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  activePanel === "content"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ContentIcon />
+                  Content
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePanel("style")}
+                className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                  activePanel === "style"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "bg-slate-50 text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <StyleIcon />
+                  Style
+                </span>
+              </button>
+            </div>
+          </section>
+
+          {activePanel === "content" ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 rounded-[22px] border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setContentTab("blocks")}
+                  className={`rounded-2xl px-3 py-2 text-sm font-semibold transition ${
+                    contentTab === "blocks" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  Blocks
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContentTab("sections")}
+                  className={`rounded-2xl px-3 py-2 text-sm font-semibold transition ${
+                    contentTab === "sections" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  Sections
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContentTab("saved")}
+                  className={`rounded-2xl px-3 py-2 text-sm font-semibold transition ${
+                    contentTab === "saved" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+                  }`}
+                >
+                  Saved
+                </button>
+              </div>
+
+              {selectedBlock ? (
+                <BlockInspector
+                  block={selectedBlock}
+                  onUpdate={updateBlock}
+                  onDuplicate={duplicateBlock}
+                  onRemove={(blockId) => {
+                    removeBlock(blockId);
+                    if (selectedBlockId === blockId) {
+                      setSelectedBlockId("");
+                    }
+                  }}
+                  onClearSelection={() => setSelectedBlockId("")}
+                  onMoveUp={() => selectedBlock && moveBlock(selectedBlock.id, -1)}
+                  onMoveDown={() => selectedBlock && moveBlock(selectedBlock.id, 1)}
+                  canMoveUp={Boolean(selectedBlock && form.blocks.findIndex((block) => block.id === selectedBlock.id) > 0)}
+                  canMoveDown={Boolean(selectedBlock && form.blocks.findIndex((block) => block.id === selectedBlock.id) < form.blocks.length - 1)}
+                />
+              ) : contentTab === "blocks" ? (
+                <ControlCard title="Blocks" description="Drag blocks into the canvas or tap one to add it.">
+                  <div className="grid grid-cols-2 gap-3">
+                    {blockTypesInOrder.map((type) => (
+                      <div
+                        key={type}
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={handlePaletteDragStart(type)}
+                        onDragEnd={handlePaletteDragEnd}
+                        onClick={() => addBlock(type)}
+                        className="cursor-grab rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 active:cursor-grabbing"
+                      >
+                        <span className="block text-sm font-semibold text-slate-900">{paletteItems[type].title}</span>
+                        <span className="mt-1 block text-xs leading-5 text-slate-500">{paletteItems[type].description}</span>
+                      </div>
+                    ))}
+                  </div>
+                </ControlCard>
+              ) : contentTab === "sections" ? (
+                <ControlCard title="Sections" description="Drop in a ready-made section in one click.">
+                  <div className="space-y-3">
+                    {sectionPresets.map((section) => (
+                      <button
+                        key={section.key}
+                        type="button"
+                        onClick={() => insertSection(section)}
+                        className="flex w-full items-start justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:border-slate-300 hover:bg-white"
+                      >
+                        <span>
+                          <span className="block text-sm font-semibold text-slate-900">{section.title}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">{section.description}</span>
+                        </span>
+                        <span className="mt-1 text-slate-400">
+                          <ChevronRightIcon />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </ControlCard>
+              ) : (
+                <ControlCard title="Saved" description="Store blocks or sections for later reuse.">
+                  <div className="rounded-[28px] border border-slate-200 bg-white px-5 py-8 text-center">
+                    <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-[#f3f7f0] text-[#6fbf7d]">
+                      <svg viewBox="0 0 120 120" className="h-16 w-16 fill-none stroke-current" strokeWidth="2">
+                        <path d="M25 85c18 8 52 8 70 0" />
+                        <path d="M34 70c14-25 37-25 52 0" />
+                        <path d="M42 57c0-9 7-16 18-16s18 7 18 16c0 8-7 15-18 15s-18-7-18-15Z" />
+                        <path d="M52 36c2-4 6-6 8-6s6 2 8 6" />
+                        <path d="M60 24v10" />
+                        <path d="M86 34l5-5" />
+                        <path d="M35 34l-5-5" />
+                      </svg>
+                    </div>
+                    <h4 className="mt-6 text-[18px] font-semibold text-slate-900">
+                      Save your favourite content and reuse it anytime
+                    </h4>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Use the Save icon while selecting a block or section, then come back here to reuse it later.
+                    </p>
+                  </div>
+                </ControlCard>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <ControlCard title="Layout" description="Set the email width and base body color.">
+                <div className="space-y-4">
+                  <Field label="Body width" hint="Width of the centered email container in pixels.">
+                    <input
+                      className="field"
+                      type="number"
+                      min="320"
+                      max="900"
+                      value={currentSettings.layout.bodyWidth}
+                      onChange={(event) => updateStyle("layout", "bodyWidth", Number(event.target.value || 600))}
+                    />
+                  </Field>
+                  <Field label="Body color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.layout.bodyColor}
+                      onChange={(event) => updateStyle("layout", "bodyColor", event.target.value)}
+                    />
+                  </Field>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Spacing" description="Control padding and spacing behavior.">
+                <div className="space-y-4">
+                  <Field label="Padding">
+                    <input
+                      className="field"
+                      type="number"
+                      min="0"
+                      max="80"
+                      value={currentSettings.spacing.padding}
+                      onChange={(event) => updateStyle("spacing", "padding", Number(event.target.value || 0))}
+                    />
+                  </Field>
+                  <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <span>
+                      <span className="block font-semibold text-slate-900">Group sides</span>
+                      <span className="block text-xs text-slate-500">Use one shared padding value across the email.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(currentSettings.spacing.groupSides)}
+                      onChange={(event) => updateStyle("spacing", "groupSides", event.target.checked)}
+                    />
+                  </label>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Background" description="Adjust the outer canvas background.">
+                <div className="space-y-4">
+                  <Field label="Color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.background.color}
+                      onChange={(event) => updateStyle("background", "color", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Image" hint="Use an image for the email backdrop if needed.">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="secondary-button px-4 py-2 text-sm"
+                        onClick={() => bgImageInputRef.current?.click()}
+                      >
+                        Add image
+                      </button>
+                      {currentSettings.background.imageUrl ? (
+                        <button
+                          type="button"
+                          className="ghost-button px-3 py-2 text-sm"
+                          onClick={() => updateStyle("background", "imageUrl", "")}
                         >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
-                    ) : null}
-                    {block.type === "image" ? (
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <input
-                          className="field md:col-span-2"
-                          placeholder="Image URL"
-                          value={block.props.imageUrl || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { imageUrl: e.target.value })
-                          }
-                        />
-                        <input
-                          className="field"
-                          placeholder="Alt text"
-                          value={block.props.alt || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { alt: e.target.value })
-                          }
-                        />
-                        <input
-                          className="field"
-                          placeholder="Caption"
-                          value={block.props.caption || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { caption: e.target.value })
-                          }
-                        />
-                        <label className="flex items-center gap-2 text-sm text-slate-600 md:col-span-2">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(block.props.rounded)}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                rounded: e.target.checked,
-                              })
-                            }
-                          />
-                          Rounded corners
-                        </label>
-                      </div>
-                    ) : null}
-                    {block.type === "button" ? (
-                      <div className="grid gap-3 md:grid-cols-[1fr_1fr_160px]">
-                        <input
-                          className="field"
-                          placeholder="Button text"
-                          value={block.props.text || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { text: e.target.value })
-                          }
-                        />
-                        <input
-                          className="field"
-                          placeholder="Button link"
-                          value={block.props.url || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { url: e.target.value })
-                          }
-                        />
-                        <select
-                          className="field"
-                          value={block.props.style || "solid"}
-                          onChange={(e) =>
-                            updateBlock(block.id, { style: e.target.value })
-                          }
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                    <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgImagePick} />
+                  </Field>
+                  <Field label="Image URL">
+                    <input
+                      className="field"
+                      placeholder="https://..."
+                      value={currentSettings.background.imageUrl}
+                      onChange={(event) => updateStyle("background", "imageUrl", event.target.value)}
+                    />
+                  </Field>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Header" description="Control browser-link visibility and header behavior.">
+                <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <span>
+                    <span className="block font-semibold text-slate-900">Show 'View in Browser' link</span>
+                    <span className="block text-xs text-slate-500">Displayed above the email content.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(currentSettings.header.showBrowserLink)}
+                    onChange={(event) => updateStyle("header", "showBrowserLink", event.target.checked)}
+                  />
+                </label>
+              </ControlCard>
+
+              <ControlCard title="Text styles" description="Set typography, color, and direction.">
+                <div className="space-y-4">
+                  <Field label="Paragraph font">
+                    <select
+                      className="field"
+                      value={currentSettings.text.paragraphFont}
+                      onChange={(event) => updateStyle("text", "paragraphFont", event.target.value)}
+                    >
+                      {fontOptions.map((font) => (
+                        <option key={font} value={font}>
+                          {font}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Heading font">
+                    <select
+                      className="field"
+                      value={currentSettings.text.headingFont}
+                      onChange={(event) => updateStyle("text", "headingFont", event.target.value)}
+                    >
+                      {fontOptions.map((font) => (
+                        <option key={font} value={font}>
+                          {font}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Font size">
+                    <input
+                      className="field"
+                      type="number"
+                      min="12"
+                      max="24"
+                      value={currentSettings.text.fontSize}
+                      onChange={(event) => updateStyle("text", "fontSize", Number(event.target.value || 16))}
+                    />
+                  </Field>
+                  <Field label="Font color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.text.fontColor}
+                      onChange={(event) => updateStyle("text", "fontColor", event.target.value)}
+                    />
+                  </Field>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Text settings" description="Adjust reading rhythm and direction.">
+                <div className="space-y-4">
+                  <Field label="Line height">
+                    <ToggleGroup
+                      value={String(currentSettings.text.lineHeight)}
+                      onChange={(value) => updateStyle("text", "lineHeight", Number(value))}
+                      options={[
+                        { value: "1.4", label: "Compact" },
+                        { value: "1.7", label: "Normal" },
+                        { value: "2", label: "Relaxed" },
+                      ]}
+                    />
+                  </Field>
+                  <Field label="Writing direction">
+                    <ToggleGroup
+                      value={currentSettings.text.direction}
+                      onChange={(value) => updateStyle("text", "direction", value)}
+                      options={[
+                        { value: "ltr", label: "LTR" },
+                        { value: "rtl", label: "RTL" },
+                      ]}
+                    />
+                  </Field>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Links" description="Control link color and decoration.">
+                <div className="space-y-4">
+                  <Field label="Color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.text.linkColor}
+                      onChange={(event) => updateStyle("text", "linkColor", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Style">
+                    <ToggleGroup
+                      value={currentSettings.text.linkStyle}
+                      onChange={(value) => updateStyle("text", "linkStyle", value)}
+                      options={[
+                        { value: "none", label: "None" },
+                        { value: "underline", label: "Underline" },
+                      ]}
+                    />
+                  </Field>
+                </div>
+              </ControlCard>
+
+              <ControlCard title="Buttons" description="Tune button appearance across the email.">
+                <div className="space-y-4">
+                  <Field label="Font">
+                    <select
+                      className="field"
+                      value={currentSettings.buttons.font}
+                      onChange={(event) => updateStyle("buttons", "font", event.target.value)}
+                    >
+                      {fontOptions.map((font) => (
+                        <option key={font} value={font}>
+                          {font}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Font size">
+                    <input
+                      className="field"
+                      type="number"
+                      min="12"
+                      max="24"
+                      value={currentSettings.buttons.fontSize}
+                      onChange={(event) => updateStyle("buttons", "fontSize", Number(event.target.value || 16))}
+                    />
+                  </Field>
+                  <Field label="Font color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.buttons.fontColor}
+                      onChange={(event) => updateStyle("buttons", "fontColor", event.target.value)}
+                    />
+                  </Field>
+                  <Field label="Font style">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        ["bold", "B"],
+                        ["italic", "I"],
+                        ["underline", "U"],
+                      ].map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => updateStyle("buttons", key, !currentSettings.buttons[key])}
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border text-sm font-semibold transition ${
+                            currentSettings.buttons[key]
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          }`}
                         >
-                          <option value="solid">Solid</option>
-                          <option value="ghost">Ghost</option>
-                        </select>
-                        <select
-                          className="field md:col-span-3"
-                          value={block.props.align || "left"}
-                          onChange={(e) =>
-                            updateBlock(block.id, { align: e.target.value })
-                          }
-                        >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
-                    ) : null}
-                    {block.type === "product" ? (
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <select
-                          className="field md:col-span-2"
-                          value={block.props.productId || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { productId: e.target.value })
-                          }
-                        >
-                          {productCatalog.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} - {money(p.price)}
-                            </option>
-                          ))}
-                        </select>
-                        <label className="flex items-center gap-2 text-sm text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={block.props.showPrice !== false}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                showPrice: e.target.checked,
-                              })
-                            }
-                          />
-                          Show price
-                        </label>
-                        <label className="flex items-center gap-2 text-sm text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(block.props.showCompareAt)}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                showCompareAt: e.target.checked,
-                              })
-                            }
-                          />
-                          Show compare-at price
-                        </label>
-                      </div>
-                    ) : null}
-                    {block.type === "product_list" ? (
-                      <div className="grid gap-3">
-                        <input
-                          className="field"
-                          placeholder="Section title"
-                          value={block.props.title || ""}
-                          onChange={(e) =>
-                            updateBlock(block.id, { title: e.target.value })
-                          }
-                        />
-                        <div className="grid gap-3 md:grid-cols-[1fr_120px_160px]">
-                          <input
-                            className="field"
-                            placeholder="Product ids, comma separated"
-                            value={(block.props.productIds || []).join(", ")}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                productIds: e.target.value
-                                  .split(",")
-                                  .map((item) => item.trim())
-                                  .filter(Boolean),
-                              })
-                            }
-                          />
-                          <input
-                            className="field"
-                            type="number"
-                            min="1"
-                            max="6"
-                            value={block.props.limit || 3}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                limit: Number(e.target.value || 1),
-                              })
-                            }
-                          />
-                          <select
-                            className="field"
-                            value={block.props.layout || "grid"}
-                            onChange={(e) =>
-                              updateBlock(block.id, { layout: e.target.value })
-                            }
-                          >
-                            <option value="grid">Grid</option>
-                            <option value="stack">Stack</option>
-                          </select>
-                        </div>
-                        <label className="flex items-center gap-2 text-sm text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(block.props.showCompareAt)}
-                            onChange={(e) =>
-                              updateBlock(block.id, {
-                                showCompareAt: e.target.checked,
-                              })
-                            }
-                          />
-                          Show compare-at price
-                        </label>
-                      </div>
-                    ) : null}
-                    {block.type === "divider" ? (
-                      <p className="text-sm text-slate-500">
-                        Divider block inserted. No extra settings needed.
-                      </p>
-                    ) : null}
-                    {block.type === "spacer" ? (
-                      <div className="grid gap-3 md:grid-cols-[1fr_160px]">
-                        <label className="text-sm text-slate-600">
-                          Spacer height
-                        </label>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Width" hint="Button width as a percentage.">
+                      <div className="flex items-center gap-2">
                         <input
                           className="field"
                           type="number"
-                          min="8"
-                          max="120"
-                          value={block.props.size || 24}
-                          onChange={(e) =>
-                            updateBlock(block.id, {
-                              size: Number(e.target.value || 24),
-                            })
-                          }
+                          min="25"
+                          max="100"
+                          value={currentSettings.buttons.width}
+                          onChange={(event) => updateStyle("buttons", "width", Number(event.target.value || 50))}
                         />
+                        <span className="text-sm text-slate-500">%</span>
                       </div>
-                    ) : null}
+                    </Field>
+                    <Field label="Rounded corners">
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="field"
+                          type="number"
+                          min="0"
+                          max="24"
+                          value={currentSettings.buttons.roundedCorners}
+                          onChange={(event) => updateStyle("buttons", "roundedCorners", Number(event.target.value || 0))}
+                        />
+                        <span className="text-sm text-slate-500">px</span>
+                      </div>
+                    </Field>
                   </div>
-                </article>
-              ))}
-            </div>
-          </div>
+                  <Field label="Background color">
+                    <input
+                      className="field h-12 p-1"
+                      type="color"
+                      value={currentSettings.buttons.backgroundColor}
+                      onChange={(event) => updateStyle("buttons", "backgroundColor", event.target.value)}
+                    />
+                  </Field>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Border size">
+                      <input
+                        className="field"
+                        type="number"
+                        min="0"
+                        max="6"
+                        value={currentSettings.buttons.borderSize}
+                        onChange={(event) => updateStyle("buttons", "borderSize", Number(event.target.value || 0))}
+                      />
+                    </Field>
+                    <Field label="Border color">
+                      <input
+                        className="field h-12 p-1"
+                        type="color"
+                        value={currentSettings.buttons.borderColor}
+                        onChange={(event) => updateStyle("buttons", "borderColor", event.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </ControlCard>
 
-          <details
-            className="rounded-3xl border border-slate-200 bg-white p-5"
-            open={showAdvanced}
-            onToggle={(e) => setShowAdvanced(e.currentTarget.open)}
-          >
-            <summary className="cursor-pointer list-none text-sm font-semibold text-slate-700">
-              Advanced HTML, optional
-            </summary>
-            <p className="mt-2 text-sm text-slate-500">
-              Leave this empty to use the block builder output. Advanced users
-              can paste a custom HTML override.
-            </p>
-            <textarea
-              className="field mt-4 min-h-[220px] resize-y"
-              placeholder="Optional HTML override for advanced users"
-              value={form.advancedHtml}
-              onChange={(e) => updateForm("advancedHtml", e.target.value)}
-            />
-          </details>
+              <details
+                className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.05)]"
+                open={showAdvanced}
+                onToggle={(event) => setShowAdvanced(event.currentTarget.open)}
+              >
+                <summary className="cursor-pointer list-none text-[16px] font-semibold text-slate-900">
+                  Advanced HTML
+                </summary>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Leave this empty to use the drag-and-drop builder output. Paste custom HTML here when needed.
+                </p>
+                <textarea
+                  className="field mt-4 min-h-[220px] resize-y font-mono text-xs"
+                  placeholder="Optional HTML override"
+                  value={form.advancedHtml}
+                  onChange={(event) => updateForm("advancedHtml", event.target.value)}
+                />
+              </details>
+            </div>
+          )}
 
           {error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
               {error}
             </div>
           ) : null}
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={isSubmitting}
-            >
-              {isSubmitting
-                ? "Saving..."
-                : id
-                  ? "Update builder"
-                  : "Save builder"}
-            </button>
-          </div>
-        </section>
+        </aside>
 
-        <section className="space-y-6">
-          <article className="shell-card p-6">
-            <h3 className="text-xl font-semibold text-slate-900">
-              Live preview
-            </h3>
-            <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4">
-              <p className="text-sm font-semibold text-slate-900">
-                {form.subject || "Subject preview"}
+        <section className="min-h-0 overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">
+                Canvas
               </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {form.previewText || "Preview text"}
-              </p>
-              <div className="mt-4 rounded-3xl border border-slate-100 bg-slate-50 p-5">
-                {form.blocks.map((block) => (
-                  <div key={block.id} className="mb-4 last:mb-0">
-                    {previewBlock(block, form.accentColor || "#6d28d9")}
-                  </div>
-                ))}
+              <h2 className="mt-1 text-[20px] font-semibold tracking-tight text-slate-900">
+                {viewportMode === "mobile" ? "Mobile preview" : "Desktop preview"}
+              </h2>
+            </div>
+            <div className="md:hidden">
+              <ToggleGroup
+                value={viewportMode}
+                onChange={setViewportMode}
+                options={[
+                  { value: "desktop", label: "Desktop" },
+                  { value: "mobile", label: "Mobile" },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div
+            className="h-[calc(100vh-240px)] min-h-[620px] overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(99,91,255,0.08),_transparent_24%),radial-gradient(circle_at_right_top,_rgba(14,165,233,0.08),_transparent_24%),linear-gradient(180deg,_#f8fafc_0%,_#f3f6fb_100%)] p-4 md:p-6"
+            style={{
+              backgroundImage: currentSettings.background.imageUrl
+                ? `linear-gradient(180deg, rgba(248,250,252,0.94), rgba(243,246,251,0.94)), url(${currentSettings.background.imageUrl})`
+                : undefined,
+              backgroundSize: currentSettings.background.imageUrl ? "cover" : undefined,
+              backgroundPosition: currentSettings.background.imageUrl ? "center" : undefined,
+            }}
+          >
+            <div
+              className="mx-auto w-full"
+              style={{
+                maxWidth: previewWidth,
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleDropAtIndex(form.blocks.length)}
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  setSelectedBlockId("");
+                }
+              }}
+            >
+              <div
+                className="rounded-[28px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
+                style={{
+                  background: currentSettings.layout.bodyColor,
+                }}
+              >
+                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
+                  <span>{currentSettings.header.showBrowserLink ? "View in browser link enabled" : "View in browser link hidden"}</span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Drag blocks here
+                  </span>
+                </div>
+
+                <div
+                  className="space-y-4 p-4 md:p-6"
+                  style={{
+                    padding: currentSettings.spacing.groupSides
+                      ? `${currentSettings.spacing.padding}px`
+                      : `${currentSettings.spacing.padding}px ${Math.max(16, Math.round(Number(currentSettings.spacing.padding || 28) * 0.6))}px`,
+                  }}
+                >
+                  {form.blocks.length ? (
+                    <div className="space-y-2">
+                      <CanvasDropZone
+                        active={dropIndex === 0}
+                        label="Insert at top"
+                        onDragOver={() => setDropIndex(0)}
+                        onDrop={handleDropAtIndex(0)}
+                      />
+                      {form.blocks.map((block, index) => (
+                        <div key={block.id} className="space-y-2">
+                          <CanvasBlock
+                            block={block}
+                            selected={selectedBlockId === block.id}
+                            settings={currentSettings}
+                            onSelect={() => {
+                              setSelectedBlockId(block.id);
+                              setActivePanel("content");
+                            }}
+                            onUpdate={updateBlock}
+                            onDuplicate={duplicateBlock}
+                            onRemove={(blockId) => {
+                              removeBlock(blockId);
+                              if (selectedBlockId === blockId) {
+                                setSelectedBlockId("");
+                              }
+                            }}
+                            onMoveUp={() => moveBlock(block.id, -1)}
+                            onMoveDown={() => moveBlock(block.id, 1)}
+                            canMoveUp={index > 0}
+                            canMoveDown={index < form.blocks.length - 1}
+                            onDragStart={handleBlockDragStart}
+                            onDragEnd={handleBlockDragEnd}
+                          />
+                          <CanvasDropZone
+                            active={dropIndex === index + 1}
+                            label={index === form.blocks.length - 1 ? "Drop to end" : "Insert here"}
+                            onDragOver={() => setDropIndex(index + 1)}
+                            onDrop={handleDropAtIndex(index + 1)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      className={`rounded-[28px] border border-dashed px-6 py-16 text-center transition ${
+                        paletteDragType ? "border-[#6d5efc] bg-[#f4f2ff]" : "border-slate-300 bg-slate-50"
+                      }`}
+                      onDragOver={() => setDropIndex(0)}
+                      onDrop={handleDropAtIndex(0)}
+                    >
+                      <p className="text-lg font-semibold text-slate-900">Drag blocks here</p>
+                      <p className="mt-2 text-sm text-slate-500">
+                        Drop a block from the left panel, then click it to edit inline.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </article>
-
-          <article className="shell-card p-6">
-            <h3 className="text-xl font-semibold text-slate-900">
-              Product catalog
-            </h3>
-            <div className="mt-4 space-y-3">
-              {productCatalog.map((product) => (
-                <div
-                  key={product.id}
-                  className="flex items-center justify-between rounded-2xl bg-slate-50 p-3"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {product.name}
-                    </p>
-                    <p className="text-xs text-slate-500">{product.category}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {money(product.price)}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Was {money(product.compareAtPrice)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </article>
+          </div>
         </section>
+      </div>
+
+      <form
+        className="flex justify-end"
+        onSubmit={(event) => {
+          event.preventDefault();
+          saveTemplate();
+        }}
+      >
+        <button type="submit" className="sr-only">
+          Save
+        </button>
       </form>
+      </div>
     </div>
+  );
+}
+
+function ContentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <rect x="4" y="4" width="6" height="6" rx="1.5" />
+      <rect x="14" y="4" width="6" height="6" rx="1.5" />
+      <rect x="4" y="14" width="6" height="6" rx="1.5" />
+      <rect x="14" y="14" width="6" height="6" rx="1.5" />
+    </svg>
+  );
+}
+
+function StyleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <path d="M4 20c3-7 7-11 16-16" />
+      <path d="M7 4l13 13" />
+      <path d="M7 4l-3 3" />
+    </svg>
+  );
+}
+
+function DesktopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8" />
+      <path d="M12 16v4" />
+    </svg>
+  );
+}
+
+function MobileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <rect x="8" y="2.5" width="8" height="19" rx="2" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
+
+function DotsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+      <circle cx="12" cy="5" r="1.75" />
+      <circle cx="12" cy="12" r="1.75" />
+      <circle cx="12" cy="19" r="1.75" />
+    </svg>
+  );
+}
+
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2.2">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <path d="M5 4h11l3 3v13H5z" />
+      <path d="M8 4v6h8V4" />
+      <path d="M8 18h8" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <path d="M6 3h8l4 4v14H6z" />
+      <path d="M14 3v5h5" />
+      <path d="M8 14h8" />
+      <path d="M8 18h8" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <path d="M9 6l6 6-6 6" />
+    </svg>
   );
 }
 

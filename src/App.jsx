@@ -19,6 +19,7 @@ import EmailBuilderPage from "./pages/dashboard/EmailBuilderPage.jsx";
 import OverviewPage from "./pages/dashboard/OverviewPage.jsx";
 import PlaceholderPage from "./pages/dashboard/PlaceholderPage.jsx";
 import ReportsPage from "./pages/dashboard/ReportsPage.jsx";
+import SimpleEmailEditorPage from "./pages/dashboard/SimpleEmailEditorPage.jsx";
 import SegmentFormPage from "./pages/dashboard/SegmentFormPage.jsx";
 import SegmentsListPage from "./pages/dashboard/SegmentsListPage.jsx";
 import TeamUsersPage from "./pages/dashboard/TeamUsersPage.jsx";
@@ -172,14 +173,6 @@ function App() {
             }
           />
           <Route
-            path="email-builder"
-            element={
-              <PermissionGate permission="edit_content">
-                <EmailBuilderPage />
-              </PermissionGate>
-            }
-          />
-          <Route
             path="audience"
             element={
               <PermissionGate permission="manage_audience">
@@ -277,6 +270,54 @@ function App() {
               />
             ))}
         </Route>
+        <Route
+          path="/email-builder"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/email-builder/new" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/email-builder/new"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <EmailBuilderPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/email-builder/:id"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <EmailBuilderPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/simple-editor/new"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <SimpleEmailEditorPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/simple-editor/:id"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <SimpleEmailEditorPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>

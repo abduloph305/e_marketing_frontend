@@ -17,8 +17,8 @@ export const navigationItems = [
   {
     label: "Templates",
     path: "/templates",
-    description:
-      "Store reusable email layouts and brand-approved content blocks.",
+    // description:
+    //   "Store reusable email layouts and brand-approved content blocks.",
     group: "Core",
     icon: "templates",
     permission: "edit_content",
