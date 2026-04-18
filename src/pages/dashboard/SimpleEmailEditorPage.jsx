@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import PreviewAndTestModal from "../../components/dashboard/PreviewAndTestModal.jsx";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { api } from "../../lib/api.js";
@@ -32,6 +33,28 @@ const stripHtml = (html = "") => {
   const element = document.createElement("div");
   element.innerHTML = html;
   return (element.textContent || element.innerText || "").replace(/\s+/g, " ").trim();
+};
+
+const normalizeEditorValue = (value = "") =>
+  String(value).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+const fileToHostedImageUrl = async (file) => {
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read image"));
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const { data } = await api.post("/uploads/image", {
+      dataUrl: rawDataUrl,
+      filename: "simple-editor-image",
+    });
+    return data?.url || rawDataUrl;
+  } catch {
+    return rawDataUrl;
+  }
 };
 
 const countWords = (text = "") => {
@@ -99,6 +122,29 @@ const ToolbarButton = ({ active, children, title, onClick }) => (
   </button>
 );
 
+const getSimpleTemplateValidationError = (templateName, htmlValue) => {
+  if (!templateName.trim()) {
+    return "Enter template name";
+  }
+
+  const normalizedHtml = normalizeEditorValue(htmlValue).trim();
+  const plainText = stripHtml(htmlValue);
+
+  if (!normalizedHtml || !plainText) {
+    return "Add content for your template";
+  }
+
+  return "";
+};
+
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2.2">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  );
+}
+
 function SimpleEmailEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -106,10 +152,12 @@ function SimpleEmailEditorPage() {
   const [template, setTemplate] = useState(createEmptyTemplate());
   const [isLoading, setIsLoading] = useState(Boolean(id));
   const [isSaving, setIsSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [sourceMode, setSourceMode] = useState(false);
   const [htmlSource, setHtmlSource] = useState("");
+  const [previewAudience, setPreviewAudience] = useState("recipient");
+  const [previewContactQuery, setPreviewContactQuery] = useState("");
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [imageUrlValue, setImageUrlValue] = useState("");
   const [cursorSelection, setCursorSelection] = useState(null);
@@ -174,7 +222,7 @@ function SimpleEmailEditorPage() {
     const handleEscape = (event) => {
       if (event.key === "Escape") {
         setShowMenu(false);
-        setShowPreview(false);
+        setIsPreviewOpen(false);
       }
     };
 
@@ -200,6 +248,20 @@ function SimpleEmailEditorPage() {
   const plainText = useMemo(() => stripHtml(template.htmlContent), [template.htmlContent]);
   const wordCount = useMemo(() => countWords(plainText), [plainText]);
   const characterCount = useMemo(() => decodeEntities(plainText).length, [plainText]);
+  const getCurrentHtmlValue = () =>
+    (sourceMode ? htmlSource : editorRef.current?.innerHTML || template.htmlContent);
+  const getSnapshotForActions = () => {
+    const currentHtml = getCurrentHtmlValue();
+    return {
+      name: template.name,
+      html: currentHtml,
+      plainText: stripHtml(currentHtml),
+    };
+  };
+  const validateBeforeAction = () => {
+    const snapshot = getSnapshotForActions();
+    return getSimpleTemplateValidationError(snapshot.name, snapshot.html);
+  };
   const syncFromEditor = () => {
     if (!editorRef.current) return;
     const html = editorRef.current.innerHTML;
@@ -420,14 +482,28 @@ function SimpleEmailEditorPage() {
   };
 
   const handleSave = async ({ quit = false } = {}) => {
+    const snapshot = getSnapshotForActions();
+    const validationError = getSimpleTemplateValidationError(snapshot.name, snapshot.html);
+    if (validationError) {
+      toast.error(validationError);
+      return false;
+    }
+
+    if (sourceMode) {
+      syncFromSource(snapshot.html);
+    } else {
+      syncFromEditor();
+    }
+
+    const currentHtml = snapshot.html;
     setIsSaving(true);
     try {
       const payload = {
-        name: template.name.trim() || "New template",
+        name: snapshot.name.trim() || "New template",
         subject: template.subject.trim(),
         previewText: template.previewText.trim(),
-        htmlContent: sourceMode ? htmlSource : template.htmlContent,
-        plainTextContent: stripHtml(sourceMode ? htmlSource : template.htmlContent),
+        htmlContent: currentHtml,
+        plainTextContent: snapshot.plainText,
         designJson: {
           ...(template.designJson || {}),
           editor: "simple",
@@ -456,6 +532,9 @@ function SimpleEmailEditorPage() {
         plainTextContent: payload.plainTextContent,
       }));
       if (sourceMode) setHtmlSource(payload.htmlContent);
+      else if (editorRef.current && editorRef.current.innerHTML !== payload.htmlContent) {
+        editorRef.current.innerHTML = payload.htmlContent;
+      }
 
       if (quit) {
         navigate("/templates");
@@ -467,13 +546,20 @@ function SimpleEmailEditorPage() {
       }
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to save template");
+      return false;
     } finally {
       setIsSaving(false);
     }
   };
 
   const handlePrintPreview = () => {
-    const previewHtml = sourceMode ? htmlSource : template.htmlContent;
+    const validationError = validateBeforeAction();
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    const previewHtml = getCurrentHtmlValue();
     const win = window.open("", "_blank", "width=900,height=800");
     if (!win) return;
     win.document.write(`
@@ -495,29 +581,90 @@ function SimpleEmailEditorPage() {
     win.document.close();
   };
 
+  const handleSendTestEmail = async ({ email, subject, message, html }) => {
+    const recipientEmail = String(email || "").trim().toLowerCase();
+    const testSubject = String(subject || "").trim() || template.subject || template.name || "Test email";
+    const testHtml = String(html || "").trim();
+
+    if (!recipientEmail) {
+      toast.error("Enter a test email address");
+      throw new Error("Recipient email is required");
+    }
+
+    if (!testSubject) {
+      toast.error("Enter a subject for the test email");
+      throw new Error("Subject is required");
+    }
+
+    if (!testHtml) {
+      toast.error("Add content for your template");
+      throw new Error("Email content is required");
+    }
+
+    await api.post("/email/test-send", {
+      email: recipientEmail,
+      subject: testSubject,
+      html: testHtml,
+      message: String(message || "").trim(),
+    });
+
+    toast.success("Test email sent");
+  };
+
   if (isLoading) return <LoadingState message="Loading simple editor..." />;
 
   const editorHtml = sourceMode ? htmlSource : template.htmlContent;
+  const handlePreview = () => {
+    const validationError = validateBeforeAction();
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    if (sourceMode) {
+      syncFromSource(getCurrentHtmlValue());
+    } else {
+      syncFromEditor();
+    }
+    if (sourceMode) {
+      setHtmlSource(getCurrentHtmlValue());
+    }
+    setIsPreviewOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] text-slate-900">
       <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/96 backdrop-blur">
-        <div className="flex items-center justify-between gap-4 px-4 py-3 md:px-6">
+        <div className="flex flex-col gap-4 px-4 py-3 md:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => navigate("/templates")}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               aria-label="Back to templates"
             >
-              ←
+              <BackArrowIcon />
             </button>
+
+            <div className="min-w-0">
+              <input
+                className="w-full max-w-[340px] border-0 bg-transparent p-0 text-[20px] font-semibold tracking-tight text-slate-900 outline-none placeholder:text-slate-400"
+                placeholder="Untitled template"
+                value={template.name}
+                onChange={(event) => setTemplate((current) => ({ ...current, name: event.target.value }))}
+              />
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+                  {isSaving ? "Saving..." : "Ready to save"}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowPreview(true)}
+              onClick={handlePreview}
               className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
             >
               Preview &amp; Test
@@ -764,39 +911,20 @@ function SimpleEmailEditorPage() {
         </div>
       ) : null}
 
-      {showPreview ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 px-4">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">Preview</h3>
-                <p className="text-sm text-slate-500">{template.subject || "No subject"}</p>
-              </div>
-              <button
-                type="button"
-                className="secondary-button px-4 py-2 text-sm"
-                onClick={() => setShowPreview(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[calc(90vh-78px)] overflow-auto bg-slate-100 p-6">
-              <div className="mx-auto mb-4 flex max-w-3xl justify-end">
-                <button
-                  type="button"
-                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
-                  onClick={handlePrintPreview}
-                >
-                  Save as PDF
-                </button>
-              </div>
-              <div className="mx-auto max-w-3xl rounded-[24px] bg-white p-8 shadow-sm">
-                <div dangerouslySetInnerHTML={{ __html: sourceMode ? htmlSource : template.htmlContent }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PreviewAndTestModal
+        open={isPreviewOpen}
+        subject={template.subject || template.name}
+        previewText={template.previewText}
+        previewHtml={getCurrentHtmlValue()}
+        bodyWidth={680}
+        onClose={() => setIsPreviewOpen(false)}
+        onSaveAsPdf={handlePrintPreview}
+        onSendTest={handleSendTestEmail}
+        previewAudience={previewAudience}
+        setPreviewAudience={setPreviewAudience}
+        previewContactQuery={previewContactQuery}
+        setPreviewContactQuery={setPreviewContactQuery}
+      />
 
       <input
         ref={fileInputRef}
@@ -806,13 +934,12 @@ function SimpleEmailEditorPage() {
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
-            setImageUrlValue(String(reader.result || ""));
+          (async () => {
+            const hostedUrl = await fileToHostedImageUrl(file);
+            setImageUrlValue(hostedUrl);
             setShowImagePrompt(true);
-          };
-          reader.readAsDataURL(file);
-          event.target.value = "";
+            event.target.value = "";
+          })();
         }}
       />
 
@@ -821,3 +948,4 @@ function SimpleEmailEditorPage() {
 }
 
 export default SimpleEmailEditorPage;
+

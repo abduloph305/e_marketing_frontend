@@ -6,6 +6,26 @@ const escapeHtml = (value = "") =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+export const readyToUseTemplateCategories = [
+  "Anniversary",
+  "Announcement",
+  "Blog post",
+  "Confirmation",
+  "Feedback",
+  "Greeting",
+  "New products",
+  "Notification",
+  "Onboarding",
+  "Progress",
+  "Re-engagement",
+  "Release",
+  "Reminder",
+  "Sale",
+  "Special Offer",
+  "Thank you",
+  "Welcome",
+];
+
 export const buildTemplateHtml = (form) => `<!doctype html>
 <html>
   <body style="margin:0;padding:0;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">
@@ -38,7 +58,7 @@ const templatePresets = [
   {
     key: "welcome_series",
     name: "Welcome Series",
-    category: "Ready-made",
+    category: "Welcome",
     description: "A warm welcome journey for new subscribers.",
     subject: "Welcome, {{firstName}}",
     previewText: "Start your journey with a quick hello and key links.",
@@ -59,7 +79,7 @@ const templatePresets = [
   {
     key: "welcome_signup",
     name: "Signup Email",
-    category: "Ready-made",
+    category: "Onboarding",
     description: "An instant signup confirmation with a friendly first touch.",
     subject: "Thanks for signing up, {{firstName}}",
     previewText: "A quick confirmation and welcome message for new users.",
@@ -80,7 +100,7 @@ const templatePresets = [
   {
     key: "abandoned_cart_recovery",
     name: "Abandoned Cart Recovery",
-    category: "Ready-made",
+    category: "Re-engagement",
     description: "A reminder email to recover missed checkouts.",
     subject: "You left items behind, {{firstName}}",
     previewText: "Come back and finish your checkout in a few clicks.",
@@ -105,7 +125,7 @@ const templatePresets = [
   {
     key: "order_confirmation",
     name: "Order Confirmation",
-    category: "Ready-made",
+    category: "Confirmation",
     description: "A clean thank-you email after a purchase or COD order.",
     subject: "Order {{customFields.ophmateOrderNumber}} is confirmed",
     previewText: "Thanks for shopping with us. Here is your order summary.",
@@ -131,7 +151,7 @@ const templatePresets = [
   {
     key: "payment_success_thank_you",
     name: "Payment Success / Thank You",
-    category: "Ready-made",
+    category: "Thank you",
     description: "A thank-you email for successful payments with order details.",
     subject: "Payment received for {{customFields.ophmateOrderNumber}}",
     previewText: "A quick thank-you after a successful payment.",
@@ -157,7 +177,7 @@ const templatePresets = [
   {
     key: "follow_up_sequence",
     name: "Follow-up Sequence",
-    category: "Ready-made",
+    category: "Feedback",
     description: "A friendly post-purchase follow-up with support and next steps.",
     subject: "How is everything going, {{firstName}}?",
     previewText: "A follow-up email to keep the conversation going.",
@@ -178,7 +198,7 @@ const templatePresets = [
   {
     key: "reminder_email",
     name: "Reminder Email",
-    category: "Ready-made",
+    category: "Reminder",
     description: "A simple reminder for due actions, events, or renewals.",
     subject: "Friendly reminder for {{firstName}}",
     previewText: "Use this for reminders, renewals, and due dates.",
@@ -199,7 +219,7 @@ const templatePresets = [
   {
     key: "discount_offer",
     name: "Discount Offer",
-    category: "Ready-made",
+    category: "Special Offer",
     description: "A conversion-focused template with urgency and offer copy.",
     subject: "A special offer just for you, {{firstName}}",
     previewText: "Use this template for limited-time offers and win-back flows.",
@@ -219,6 +239,258 @@ const templatePresets = [
         "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1200&q=80",
       imageAlt: "Discount offer",
       footerNote: "Offer terms and expiry can be customized before sending.",
+    },
+  },
+  {
+    key: "anniversary_milestone",
+    name: "Anniversary Milestone",
+    category: "Anniversary",
+    description: "A warm milestone email to celebrate a special date.",
+    subject: "Happy anniversary, {{firstName}}",
+    previewText: "Celebrate a meaningful moment with a thoughtful note.",
+    variables: ["{{firstName}}", "{{customFields.ophmateOrderNumber}}"],
+    form: {
+      eyebrow: "Anniversary",
+      headline: "Cheers to another year with us, {{firstName}}",
+      bodyText:
+        "We love celebrating milestones with our community. Thank you for staying with us and being part of the journey.",
+      ctaText: "See your reward",
+      ctaUrl: "https://sellerslogin.com/offers",
+      imageUrl:
+        "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Anniversary celebration",
+      footerNote: "A special offer may be attached to your anniversary message.",
+    },
+  },
+  {
+    key: "announcement_company",
+    name: "Company Announcement",
+    category: "Announcement",
+    description: "A polished announcement template for news and updates.",
+    subject: "Important update from our team",
+    previewText: "Share news with a clean and direct announcement layout.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Announcement",
+      headline: "Here is an important update",
+      bodyText:
+        "We wanted to share a quick announcement with you. Read the latest update and stay informed about what is changing next.",
+      ctaText: "Read update",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Announcement briefing",
+      footerNote: "Thanks for staying connected and reading our updates.",
+    },
+  },
+  {
+    key: "blog_post_digest",
+    name: "Blog Post Digest",
+    category: "Blog post",
+    description: "A content-heavy digest for articles, stories, and updates.",
+    subject: "New article: {{firstName}}, see what is new",
+    previewText: "Perfect for sharing blog posts and editorial content.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Blog post",
+      headline: "Top stories worth reading today",
+      bodyText:
+        "Explore our latest article roundup, insights, and practical tips designed to keep your readers engaged.",
+      ctaText: "Read article",
+      ctaUrl: "https://sellerslogin.com/blog",
+      imageUrl:
+        "https://images.unsplash.com/photo-1499750310107-5fef28a66643?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Blog reading",
+      footerNote: "Your readers can reply to get more content like this.",
+    },
+  },
+  {
+    key: "customer_feedback",
+    name: "Customer Feedback",
+    category: "Feedback",
+    description: "A survey-style email to collect opinions and ratings.",
+    subject: "We would love your feedback, {{firstName}}",
+    previewText: "Ask for feedback after a purchase, signup, or service call.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Feedback",
+      headline: "Tell us what you think",
+      bodyText:
+        "Your thoughts help us improve. Share your experience so we can make the next one even better for you.",
+      ctaText: "Share feedback",
+      ctaUrl: "https://sellerslogin.com/support",
+      imageUrl:
+        "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Feedback survey",
+      footerNote: "Feedback helps us improve our product and service quality.",
+    },
+  },
+  {
+    key: "friendly_greeting",
+    name: "Friendly Greeting",
+    category: "Greeting",
+    description: "A short and friendly hello for campaigns and onboarding.",
+    subject: "A quick hello from our team",
+    previewText: "A casual greeting email for light-touch communication.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Greeting",
+      headline: "Hello there, {{firstName}}",
+      bodyText:
+        "Just dropping by to say hello and share a quick note. We are glad to have you with us.",
+      ctaText: "Say hi back",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Greeting email",
+      footerNote: "A friendly greeting can keep your brand feeling human.",
+    },
+  },
+  {
+    key: "new_products_launch",
+    name: "New Products Launch",
+    category: "New products",
+    description: "A launch template to showcase fresh products or collections.",
+    subject: "Fresh arrivals are here, {{firstName}}",
+    previewText: "Perfect for announcing new products or collections.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "New products",
+      headline: "Discover what is new this week",
+      bodyText:
+        "We have added fresh products and collection updates. Explore the latest additions and see what stands out.",
+      ctaText: "Shop new arrivals",
+      ctaUrl: "https://sellerslogin.com/offers",
+      imageUrl:
+        "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "New products showcase",
+      footerNote: "New product launches can improve repeat visits and interest.",
+    },
+  },
+  {
+    key: "account_notification",
+    name: "Account Notification",
+    category: "Notification",
+    description: "A short system-style notice for account or order events.",
+    subject: "Notification: action required for your account",
+    previewText: "Use this for account notices, order updates, and alerts.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Notification",
+      headline: "You have a new account notice",
+      bodyText:
+        "Please review the latest account notification and take any required action when you are ready.",
+      ctaText: "View notice",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Notification dashboard",
+      footerNote: "System notifications help users stay informed quickly.",
+    },
+  },
+  {
+    key: "onboarding_guide",
+    name: "Onboarding Guide",
+    category: "Onboarding",
+    description: "A guided onboarding flow for new customers or members.",
+    subject: "Let us get you started, {{firstName}}",
+    previewText: "A step-by-step onboarding experience for new users.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Onboarding",
+      headline: "Your quick start guide",
+      bodyText:
+        "Follow these simple steps to get set up, explore the dashboard, and start using the product with confidence.",
+      ctaText: "Start onboarding",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Onboarding guide",
+      footerNote: "A strong onboarding sequence improves activation and retention.",
+    },
+  },
+  {
+    key: "progress_update",
+    name: "Progress Update",
+    category: "Progress",
+    description: "A progress-focused email for milestones and status updates.",
+    subject: "Your progress update is ready, {{firstName}}",
+    previewText: "Share a checkpoint, milestone, or status summary.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Progress",
+      headline: "Here is your progress update",
+      bodyText:
+        "We wanted to share a quick progress update so you can see what is complete and what comes next.",
+      ctaText: "View progress",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Progress chart",
+      footerNote: "Progress emails are helpful for tracking outcomes over time.",
+    },
+  },
+  {
+    key: "reengagement_winback",
+    name: "Re-engagement Winback",
+    category: "Re-engagement",
+    description: "A reactivation email to bring inactive users back.",
+    subject: "We miss you, {{firstName}}",
+    previewText: "Reconnect with inactive subscribers and customers.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Re-engagement",
+      headline: "We would love to see you again",
+      bodyText:
+        "It has been a while since we last connected. Come back and see what is new, helpful, and worth your time.",
+      ctaText: "Come back now",
+      ctaUrl: "https://sellerslogin.com/offers",
+      imageUrl:
+        "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Re-engagement email",
+      footerNote: "Re-engagement emails can help revive dormant audiences.",
+    },
+  },
+  {
+    key: "release_notes",
+    name: "Release Notes",
+    category: "Release",
+    description: "A product release announcement with key highlights.",
+    subject: "Latest release notes are here",
+    previewText: "Use for launches, feature releases, and changelog updates.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Release",
+      headline: "What is new in this release",
+      bodyText:
+        "We have packed this release with improvements, fixes, and updates designed to make the experience smoother.",
+      ctaText: "See what changed",
+      ctaUrl: "https://sellerslogin.com/overview",
+      imageUrl:
+        "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Release notes",
+      footerNote: "Release emails help customers stay informed about new features.",
+    },
+  },
+  {
+    key: "sale_flash",
+    name: "Flash Sale",
+    category: "Sale",
+    description: "A high-conversion sale template with urgency and clarity.",
+    subject: "Flash sale starts now, {{firstName}}",
+    previewText: "Perfect for limited-time sales and promos.",
+    variables: ["{{firstName}}"],
+    form: {
+      eyebrow: "Sale",
+      headline: "Save big before time runs out",
+      bodyText:
+        "Our limited-time sale is live. Browse the top picks, grab your favorites, and check out before the offer expires.",
+      ctaText: "Shop the sale",
+      ctaUrl: "https://sellerslogin.com/offers",
+      imageUrl:
+        "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1200&q=80",
+      imageAlt: "Sale promotion",
+      footerNote: "Clear sale messaging can improve clicks and conversions.",
     },
   },
 ];

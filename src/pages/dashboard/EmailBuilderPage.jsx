@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { getCatalogProduct, productCatalog } from "../../data/productCatalog.js";
+import { buildTemplateHtml as buildPresetTemplateHtml, getTemplatePreset } from "../../data/templatePresets.js";
 import { api } from "../../lib/api.js";
 
 const uid = () =>
@@ -15,6 +16,69 @@ const escapeHtml = (value = "") =>
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+
+const isDataImageUrl = (value = "") => /^data:image\//i.test(String(value || "").trim());
+
+const imageUrlToPng = async (value = "") => {
+  const source = String(value || "").trim();
+  if (!isDataImageUrl(source) || /^data:image\/png/i.test(source)) {
+    return source;
+  }
+
+  try {
+    const { data } = await api.post("/uploads/image", {
+      dataUrl: source,
+      filename: "template-image",
+    });
+    return data?.url || source;
+  } catch {
+    return source;
+  }
+};
+
+const fileToPngDataUrl = async (file) => {
+  const rawDataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read image"));
+    reader.readAsDataURL(file);
+  });
+
+  return imageUrlToPng(rawDataUrl);
+};
+
+const normalizeTemplateImageUrls = async (form) => {
+  const next = {
+    ...form,
+    styleSettings: {
+      ...(form.styleSettings || cloneStyleSettings()),
+      background: {
+        ...((form.styleSettings || cloneStyleSettings()).background || {}),
+        imageUrl: await imageUrlToPng((form.styleSettings || cloneStyleSettings()).background?.imageUrl || ""),
+      },
+    },
+    blocks: Array.isArray(form.blocks) ? form.blocks.map((block) => ({ ...block, props: { ...(block.props || {}) } })) : [],
+  };
+
+  if (!Array.isArray(next.blocks)) {
+    next.blocks = [];
+  }
+
+  next.blocks = await Promise.all(
+    next.blocks.map(async (block) => {
+      const props = { ...(block.props || {}) };
+      if (typeof props.imageUrl === "string" && props.imageUrl.trim()) {
+        props.imageUrl = await imageUrlToPng(props.imageUrl);
+      }
+      if (typeof props.thumbnailUrl === "string" && props.thumbnailUrl.trim()) {
+        props.thumbnailUrl = await imageUrlToPng(props.thumbnailUrl);
+      }
+      return { ...block, props };
+    }),
+  );
+
+  return next;
+};
 
 const money = (value = 0) => `$${Number(value || 0).toFixed(2)}`;
 
@@ -102,6 +166,18 @@ const legacyToBlocks = (design = {}) => {
   if (design.headline) blocks.push({ id: uid(), type: "title", props: { ...blockDefinitions.title.create(), content: design.headline } });
   if (design.introText) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.introText } });
   if (design.bodyText) blocks.push({ id: uid(), type: "body_text", props: { ...blockDefinitions.body_text.create(), content: design.bodyText } });
+  if (design.imageUrl) {
+    blocks.push({
+      id: uid(),
+      type: "image",
+      props: {
+        ...blockDefinitions.image.create(),
+        imageUrl: design.imageUrl,
+        alt: design.imageAlt || blockDefinitions.image.create().alt,
+        linkUrl: design.ctaUrl || "",
+      },
+    });
+  }
   if (design.ctaText || design.ctaUrl) {
     blocks.push({
       id: uid(),
@@ -637,6 +713,7 @@ const textBlockTypes = new Set(["title", "body_text"]);
 
 const CanvasDropZone = ({ active, label, onDragOver, onDrop }) => (
   <div
+    data-canvas-dropzone="true"
     className={`relative h-4 transition ${active ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
     onDragOver={onDragOver}
     onDrop={onDrop}
@@ -687,6 +764,7 @@ const CanvasBlock = ({
     onDragStart: onDragStart(block.id),
     onDragEnd,
     onClick: onSelect,
+    "data-canvas-block": "true",
   };
 
   if (block.type === "title") {
@@ -1495,6 +1573,7 @@ function EmailBuilderPage() {
   const toast = useContext(ToastContext);
   const [searchParams] = useSearchParams();
   const initialMode = searchParams.get("mode") === "html" ? "html" : "builder";
+  const presetKey = searchParams.get("preset") || "";
   const [form, setForm] = useState(() => createInitialForm(initialMode));
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(Boolean(id));
@@ -1508,6 +1587,16 @@ function EmailBuilderPage() {
   const [paletteDragType, setPaletteDragType] = useState("");
   const [dropIndex, setDropIndex] = useState(-1);
   const [selectedBlockId, setSelectedBlockId] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState("preview");
+  const [previewViewportMode, setPreviewViewportMode] = useState("desktop");
+  const [previewAudience, setPreviewAudience] = useState("recipient");
+  const [previewContactQuery, setPreviewContactQuery] = useState("");
+  const [testRecipientEmail, setTestRecipientEmail] = useState("");
+  const [testEmailSubject, setTestEmailSubject] = useState("");
+  const [testEmailMessage, setTestEmailMessage] = useState("");
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [previewHtmlSource, setPreviewHtmlSource] = useState("");
   const actionMenuRef = useRef(null);
   const bgImageInputRef = useRef(null);
 
@@ -1518,12 +1607,54 @@ function EmailBuilderPage() {
   }, []);
 
   useEffect(() => {
+    if (id || !presetKey) {
+      return;
+    }
+
+    const preset = getTemplatePreset(presetKey);
+    if (!preset) {
+      return;
+    }
+
+    (async () => {
+      const normalizedPreset = {
+        ...preset.form,
+        imageUrl: await imageUrlToPng(preset.form.imageUrl || ""),
+      };
+
+      const presetBlocks = legacyToBlocks({
+        eyebrow: preset.form.eyebrow,
+        headline: preset.form.headline,
+        bodyText: preset.form.bodyText,
+        ctaText: preset.form.ctaText,
+        ctaUrl: preset.form.ctaUrl,
+        footerNote: preset.form.footerNote,
+        imageUrl: normalizedPreset.imageUrl,
+        imageAlt: preset.form.imageAlt,
+      });
+
+      const next = {
+        ...createInitialForm("html"),
+        name: preset.name,
+        subject: preset.subject,
+        previewText: preset.previewText,
+        blocks: presetBlocks,
+        advancedHtml: buildPresetTemplateHtml(normalizedPreset),
+      };
+
+      setForm(next);
+      setShowAdvanced(false);
+      setLastSavedSignature(JSON.stringify(next));
+    })();
+  }, [id, presetKey]);
+
+  useEffect(() => {
     if (!id) return;
     (async () => {
       setIsLoading(true);
       try {
         const { data } = await api.get(`/templates/${id}`);
-        const mapped = mapTemplateToForm(data, initialMode);
+        const mapped = await normalizeTemplateImageUrls(mapTemplateToForm(data, initialMode));
         setForm(mapped);
         setShowAdvanced(Boolean(mapped.advancedHtml?.trim()) || initialMode === "html");
         setLastSavedSignature(JSON.stringify(mapped));
@@ -1555,10 +1686,32 @@ function EmailBuilderPage() {
     };
   }, [showActionMenu]);
 
+  useEffect(() => {
+    if (!isPreviewOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsPreviewOpen(false);
+        setPreviewHtmlSource("");
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isPreviewOpen]);
+
   const generatedHtml = useMemo(() => buildTemplateHtml(form), [form]);
   const serializedForm = useMemo(() => JSON.stringify(form), [form]);
   const hasUnsavedChanges = serializedForm !== lastSavedSignature;
   const currentSettings = form.styleSettings || cloneStyleSettings();
+  const previewHtml = previewHtmlSource || form.advancedHtml.trim() || generatedHtml;
 
   const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const updateStyle = (section, key, value) =>
@@ -1702,25 +1855,73 @@ function EmailBuilderPage() {
       return { ...current, blocks: next };
     });
 
+  const getValidationError = () => {
+    if (!form.name.trim()) {
+      return "Enter template name";
+    }
+
+    if (!form.blocks.length && !form.advancedHtml.trim()) {
+      return "Add content for your template";
+    }
+
+    return "";
+  };
+
+  const buildRenderableHtml = async () => {
+    const normalizedForm = await normalizeTemplateImageUrls(form);
+    return normalizedForm.advancedHtml.trim() || buildTemplateHtml(normalizedForm);
+  };
+
+  const extractSaveErrorMessage = (requestError) =>
+    requestError?.response?.data?.message ||
+    requestError?.message ||
+    "Unable to save template";
+
+  const buildUniqueTemplateName = (baseName, existingNames = [], currentId = "") => {
+    const normalizedExisting = new Set(
+      existingNames
+        .filter(Boolean)
+        .map((name) => String(name).trim().toLowerCase())
+        .filter((name) => name !== String(baseName).trim().toLowerCase()),
+    );
+
+    const source = String(baseName || "Untitled template").trim();
+    const candidates = [
+      `${source} copy`,
+      `${source} copy 2`,
+      `${source} copy 3`,
+      `${source} copy 4`,
+      `${source} copy 5`,
+    ];
+
+    for (const candidate of candidates) {
+      if (!normalizedExisting.has(candidate.trim().toLowerCase())) {
+        return candidate;
+      }
+    }
+
+    const suffix = currentId ? currentId.slice(-4).toUpperCase() : Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `${source} ${suffix}`;
+  };
+
   const saveTemplate = async ({ quit = false } = {}) => {
     setError("");
-    const subject = form.subject.trim() || form.name.trim() || "Untitled template";
-    if (!form.name.trim()) {
-      setError("Template name is required");
-      return false;
-    }
-    if (!form.blocks.length && !form.advancedHtml.trim()) {
-      setError("Add at least one block or paste custom HTML");
+    const validationError = getValidationError();
+    if (validationError) {
+      setError(validationError);
+      toast.error(validationError);
       return false;
     }
 
+    const subject = form.subject.trim() || form.name.trim() || "Untitled template";
     setIsSaving(true);
     try {
+      const htmlContent = await buildRenderableHtml();
       const payload = {
         name: form.name.trim(),
         subject,
         previewText: form.previewText.trim(),
-        htmlContent: form.advancedHtml.trim() || generatedHtml,
+        htmlContent,
         designJson: {
           editor: "drag-drop",
           accentColor: form.accentColor,
@@ -1729,36 +1930,134 @@ function EmailBuilderPage() {
         },
       };
 
-      if (id) {
-        await api.put(`/templates/${id}`, payload);
-        toast.success("Template saved");
+      const persistTemplate = async (nextPayload, { suppressSuccessToast = false } = {}) => {
+        if (id) {
+          await api.put(`/templates/${id}`, nextPayload);
+          if (!suppressSuccessToast) {
+            toast.success("Template saved");
+          }
+          setLastSavedSignature(serializedForm);
+          if (quit) navigate("/templates");
+          return true;
+        }
+
+        const { data: created } = await api.post("/templates", nextPayload);
+        if (!suppressSuccessToast) {
+          toast.success("Template created");
+        }
         setLastSavedSignature(serializedForm);
-        if (quit) navigate("/templates");
+
+        if (quit) {
+          navigate("/templates");
+        } else if (created?._id) {
+          navigate(`/email-builder/${created._id}`, { replace: true });
+        }
+
         return true;
+      };
+
+      try {
+        return await persistTemplate(payload);
+      } catch (requestError) {
+        const status = requestError?.response?.status;
+        if (status === 409 && payload.name) {
+          const { data: templates } = await api.get("/templates");
+          const existingNames = Array.isArray(templates) ? templates.map((template) => template.name) : [];
+          const uniqueName = buildUniqueTemplateName(payload.name, existingNames, id);
+
+          if (uniqueName && uniqueName !== payload.name) {
+            const retryPayload = { ...payload, name: uniqueName };
+            setForm((current) => ({ ...current, name: uniqueName }));
+            await persistTemplate(retryPayload, { suppressSuccessToast: true });
+            toast.success(
+              id
+                ? `Template name already exists. Saved as "${uniqueName}".`
+                : `Template name already exists. Created as "${uniqueName}".`,
+            );
+            return true;
+          }
+        }
+
+        throw requestError;
       }
-
-      const { data: created } = await api.post("/templates", payload);
-      toast.success("Template created");
-      setLastSavedSignature(serializedForm);
-
-      if (quit) {
-        navigate("/templates");
-      } else if (created?._id) {
-        navigate(`/email-builder/${created._id}`, { replace: true });
-      }
-
-      return true;
     } catch (requestError) {
-      setError(requestError.response?.data?.message || "Unable to save template");
-      toast.error("Unable to save template");
+      const message = extractSaveErrorMessage(requestError);
+      setError(message);
+      toast.error(message);
       return false;
     } finally {
       setIsSaving(false);
     }
   };
 
-  const exportPdf = async () => {
+  const openPreview = () => {
+    const validationError = getValidationError();
+    if (validationError) {
+      setError(validationError);
+      toast.error(validationError);
+      return;
+    }
+
+    (async () => {
+      const normalizedHtml = await buildRenderableHtml();
+      setPreviewHtmlSource(normalizedHtml);
+      setTestRecipientEmail("");
+      setTestEmailSubject(previewSubject);
+      setTestEmailMessage("");
+      setPreviewTab("preview");
+      setIsPreviewOpen(true);
+    })();
+  };
+
+  const handleSendTestEmail = async () => {
+    const recipientEmail = testRecipientEmail.trim().toLowerCase();
+    const subject = testEmailSubject.trim() || previewSubject;
+
+    if (!recipientEmail) {
+      toast.error("Enter a test email address");
+      return;
+    }
+
+    if (!subject) {
+      toast.error("Enter a subject for the test email");
+      return;
+    }
+
+    if (!previewHtml.trim()) {
+      toast.error("Add content for your template");
+      return;
+    }
+
+    setIsSendingTestEmail(true);
+
     try {
+      const normalizedHtml = await buildRenderableHtml();
+      await api.post("/email/test-send", {
+        email: recipientEmail,
+        subject,
+        html: normalizedHtml,
+        message: testEmailMessage.trim(),
+      });
+      toast.success("Test email sent");
+      setIsPreviewOpen(false);
+      setPreviewHtmlSource("");
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message || "Unable to send test email");
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
+
+  const exportPdf = async () => {
+    const validationError = getValidationError();
+    if (validationError) {
+      setError(validationError);
+      toast.error(validationError);
+      return;
+    }
+
+    try {
+      const normalizedHtml = await buildRenderableHtml();
       const iframe = document.createElement("iframe");
       iframe.style.position = "fixed";
       iframe.style.right = "0";
@@ -1766,7 +2065,7 @@ function EmailBuilderPage() {
       iframe.style.width = "0";
       iframe.style.height = "0";
       iframe.style.border = "0";
-      iframe.srcdoc = form.advancedHtml.trim() || generatedHtml;
+      iframe.srcdoc = normalizedHtml;
       document.body.appendChild(iframe);
       iframe.onload = () => {
         const frameWindow = iframe.contentWindow;
@@ -1785,16 +2084,28 @@ function EmailBuilderPage() {
   const handleBgImagePick = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => updateStyle("background", "imageUrl", String(reader.result || ""));
-    reader.readAsDataURL(file);
-    event.target.value = "";
+    (async () => {
+      const pngDataUrl = await fileToPngDataUrl(file);
+      updateStyle("background", "imageUrl", pngDataUrl);
+      event.target.value = "";
+    })();
+  };
+
+  const clearCanvasSelection = () => {
+    setSelectedBlockId("");
+    setActivePanel("content");
+    setContentTab("blocks");
   };
 
   if (isLoading) return <LoadingState message="Loading email builder..." />;
 
   const previewWidth = viewportMode === "mobile" ? 390 : currentSettings.layout.bodyWidth || 600;
   const selectedBlock = form.blocks.find((block) => block.id === selectedBlockId) || null;
+  const previewSubject = form.subject.trim() || form.name.trim() || "Untitled template";
+  const previewText = form.previewText.trim();
+  const previewFromName = form.fromName?.trim() || "";
+  const previewFromEmail = form.fromEmail?.trim() || "";
+  const previewReplyTo = form.replyTo?.trim() || "";
 
   return (
     <div className="min-h-screen bg-[#f7f2e9] p-3 md:p-4">
@@ -1852,7 +2163,11 @@ function EmailBuilderPage() {
                 ]}
               />
 
-              <button type="button" className="secondary-button" onClick={() => {}}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={openPreview}
+              >
                 Preview & test
               </button>
 
@@ -1876,7 +2191,7 @@ function EmailBuilderPage() {
                   <DotsIcon />
                 </button>
 
-                {showActionMenu ? (
+                  {showActionMenu ? (
                   <div className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-3xl border border-[#e6ddd1] bg-white shadow-[0_22px_48px_rgba(15,23,42,0.14)]">
                     <button
                       type="button"
@@ -2431,6 +2746,11 @@ function EmailBuilderPage() {
               backgroundSize: currentSettings.background.imageUrl ? "cover" : undefined,
               backgroundPosition: currentSettings.background.imageUrl ? "center" : undefined,
             }}
+            onClick={(event) => {
+              if (!event.target.closest?.("[data-canvas-block]")) {
+                clearCanvasSelection();
+              }
+            }}
           >
             <div
               className="mx-auto w-full"
@@ -2439,11 +2759,6 @@ function EmailBuilderPage() {
               }}
               onDragOver={(event) => event.preventDefault()}
               onDrop={handleDropAtIndex(form.blocks.length)}
-              onClick={(event) => {
-                if (event.target === event.currentTarget) {
-                  setSelectedBlockId("");
-                }
-              }}
             >
               <div
                 className="rounded-[28px] border border-slate-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.08)]"
@@ -2540,6 +2855,264 @@ function EmailBuilderPage() {
           Save
         </button>
       </form>
+            {isPreviewOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-3 py-4 backdrop-blur-sm md:px-6"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsPreviewOpen(false);
+              setPreviewHtmlSource("");
+            }
+          }}
+        >
+          <div className="flex max-h-[92vh] w-full max-w-[1280px] flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.28)]">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 md:px-6 md:py-5">
+              <h3 className="text-[22px] font-semibold tracking-tight text-slate-900">
+                Preview &amp; test
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewOpen(false);
+                  setPreviewHtmlSource("");
+                }}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Close preview"
+              >
+                <span className="text-2xl leading-none">&times;</span>
+              </button>
+            </div>
+
+            <div className="border-b border-slate-100 px-5 md:px-6">
+              <div className="flex items-center gap-6">
+                <button
+                  type="button"
+                  onClick={() => setPreviewTab("preview")}
+                  className={`border-b-2 px-1 py-4 text-[15px] font-semibold transition ${
+                    previewTab === "preview"
+                      ? "border-indigo-500 text-indigo-600"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTab("send")}
+                  className={`border-b-2 px-1 py-4 text-[15px] font-semibold transition ${
+                    previewTab === "send"
+                      ? "border-indigo-500 text-indigo-600"
+                      : "border-transparent text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Send test email
+                </button>
+              </div>
+            </div>
+
+            {previewTab === "preview" ? (
+              <div className="grid min-h-0 flex-1 gap-4 overflow-hidden bg-slate-50 p-4 md:grid-cols-[minmax(0,1.4fr)_420px] md:p-6">
+                <section className="min-h-0 overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                    <div className="min-w-0 space-y-2">
+                      {previewFromName || previewFromEmail || previewReplyTo ? (
+                        <>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                            <span className="font-semibold text-slate-900">From:</span>
+                            <span className="text-slate-700">
+                              {previewFromName && previewFromEmail
+                                ? `${previewFromName} <${previewFromEmail}>`
+                                : previewFromName || previewFromEmail}
+                            </span>
+                          </div>
+                          {previewReplyTo ? (
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                              <span className="font-semibold text-slate-900">Reply-to:</span>
+                              <span className="text-slate-700">{previewReplyTo}</span>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                        <span className="font-semibold text-slate-900">Subject:</span>
+                        <span className="text-slate-700">{previewSubject}</span>
+                      </div>
+                      {previewText ? (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                          <span className="font-semibold text-slate-900">Preview:</span>
+                          <span className="text-slate-700">{previewText}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <ToggleGroup
+                      value={previewViewportMode}
+                      onChange={setPreviewViewportMode}
+                      options={[
+                        {
+                          value: "desktop",
+                          label: (
+                            <span className="inline-flex items-center gap-2">
+                              <DesktopIcon />
+                              Desktop
+                            </span>
+                          ),
+                        },
+                        {
+                          value: "mobile",
+                          label: (
+                            <span className="inline-flex items-center gap-2">
+                              <MobileIcon />
+                              Mobile
+                            </span>
+                          ),
+                        },
+                      ]}
+                    />
+                  </div>
+
+                  <div className="h-[calc(92vh-220px)] min-h-[520px] overflow-auto bg-[radial-gradient(circle_at_top_left,_rgba(99,91,255,0.08),_transparent_24%),radial-gradient(circle_at_right_top,_rgba(14,165,233,0.08),_transparent_24%),linear-gradient(180deg,_#f8fafc_0%,_#f3f6fb_100%)] p-4 md:p-6">
+                    <div
+                      className="mx-auto"
+                      style={{
+                        maxWidth:
+                          previewViewportMode === "mobile"
+                            ? 390
+                            : Math.max(600, currentSettings.layout.bodyWidth || 600),
+                      }}
+                    >
+                      <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.12)]">
+                        <iframe
+                          key={`${previewViewportMode}-${previewHtml.length}`}
+                          title="Email preview"
+                          srcDoc={previewHtml}
+                          className="block h-[72vh] min-h-[520px] w-full bg-white"
+                          style={{
+                            width: "100%",
+                            maxWidth: previewViewportMode === "mobile" ? 390 : "100%",
+                          }}
+                          sandbox="allow-same-origin"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* <aside className="min-h-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="space-y-5">
+                    <div>
+                      <h4 className="text-[20px] font-semibold tracking-tight text-slate-900">
+                        Who would you like to preview this email as?
+                      </h4>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="radio"
+                          name="previewAudience"
+                          value="recipient"
+                          checked={previewAudience === "recipient"}
+                          onChange={(event) => setPreviewAudience(event.target.value)}
+                          className="h-4 w-4 accent-indigo-600"
+                        />
+                        <span className="text-[15px] text-slate-700">Preview as recipient</span>
+                      </label>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-slate-900">
+                          Select a contact
+                        </label>
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2">
+                              <circle cx="11" cy="11" r="7" />
+                              <path d="M20 20l-3.5-3.5" />
+                            </svg>
+                          </span>
+                          <input
+                            type="search"
+                            className="field pl-11"
+                            placeholder="Search by email"
+                            value={previewContactQuery}
+                            onChange={(event) => setPreviewContactQuery(event.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <label className="flex cursor-pointer items-center gap-3">
+                        <input
+                          type="radio"
+                          name="previewAudience"
+                          value="event"
+                          checked={previewAudience === "event"}
+                          onChange={(event) => setPreviewAudience(event.target.value)}
+                          className="h-4 w-4 accent-indigo-600"
+                        />
+                        <span className="text-[15px] text-slate-700">Preview event</span>
+                      </label>
+                    </div>
+                  </div>
+                </aside> */}
+              </div>
+            ) : (
+              <div className="grid min-h-0 flex-1 gap-4 overflow-hidden bg-slate-50 p-4 md:grid-cols-[minmax(0,1fr)_360px] md:p-6">
+                <section className="min-h-0 overflow-auto rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Recipient email</label>
+                      <input
+                        className="field"
+                        type="email"
+                        placeholder="recipient@example.com"
+                        value={testRecipientEmail}
+                        onChange={(event) => setTestRecipientEmail(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Subject</label>
+                      <input
+                        className="field"
+                        type="text"
+                        value={testEmailSubject}
+                        onChange={(event) => setTestEmailSubject(event.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-slate-900">Message</label>
+                      <textarea
+                        className="field min-h-[200px] resize-y"
+                        value={testEmailMessage}
+                        onChange={(event) => setTestEmailMessage(event.target.value)}
+                        placeholder="Optional note for the test email"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isSendingTestEmail}
+                      onClick={handleSendTestEmail}
+                    >
+                      {isSendingTestEmail ? "Sending..." : "Send test email"}
+                    </button>
+                  </div>
+                </section>
+
+                <aside className="min-h-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="space-y-3">
+                    <h4 className="text-[20px] font-semibold tracking-tight text-slate-900">
+                      Test email
+                    </h4>
+                    <p className="text-sm leading-6 text-slate-500">
+                      Send a live SES-backed test email using the current preview content.
+                    </p>
+                  </div>
+                </aside>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
       </div>
     </div>
   );

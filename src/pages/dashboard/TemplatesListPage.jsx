@@ -1,9 +1,13 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
-import { templatePresets } from "../../data/templatePresets.js";
+import {
+  buildTemplateHtml,
+  readyToUseTemplateCategories,
+  templatePresets,
+} from "../../data/templatePresets.js";
 import { api } from "../../lib/api.js";
 
 const formatDateTime = (value) =>
@@ -92,6 +96,60 @@ function DotsIcon() {
   );
 }
 
+const escapeHtml = (value = "") =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const stripBrowserLink = (html = "") =>
+  String(html).replace(/<p[^>]*>[\s\S]*?View in browser[\s\S]*?<\/p>/gi, "");
+
+const buildPreviewHtmlDoc = (html = "", fallbackTitle = "Template") => {
+  const cleanedHtml = stripBrowserLink(html).trim();
+
+  if (cleanedHtml) {
+    return cleanedHtml;
+  }
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:20px;background:#fff;padding:28px;">
+      <div style="height:12px;width:92px;border-radius:999px;background:#cbd5e1;margin:0 auto 24px;"></div>
+      <div style="height:160px;border-radius:18px;background:linear-gradient(180deg,#eef2ff 0%,#f8fafc 100%);display:flex;align-items:center;justify-content:center;">
+        <div style="text-align:center;">
+          <div style="font-size:18px;font-weight:700;color:#1e293b;">${escapeHtml(fallbackTitle)}</div>
+          <div style="margin-top:8px;font-size:14px;color:#64748b;">Preview not available</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+};
+
+function TemplatePreviewFrame({ html, title, className = "", scale = 1 }) {
+  const inverseScale = scale > 0 ? 1 / scale : 1;
+
+  return (
+    <div className={`relative h-full w-full overflow-hidden bg-white ${className}`}>
+      <iframe
+        title={title}
+        srcDoc={buildPreviewHtmlDoc(html, title)}
+        className="absolute left-0 top-0 origin-top-left bg-white"
+        style={{
+          width: `${inverseScale * 100}%`,
+          height: `${inverseScale * 100}%`,
+          transform: `scale(${scale})`,
+        }}
+        sandbox="allow-same-origin"
+      />
+    </div>
+  );
+}
+
 function ChevronLeftIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
@@ -116,6 +174,15 @@ function CheckIcon() {
   );
 }
 
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2">
+      <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function TemplatesListPage() {
   const navigate = useNavigate();
   const toast = useContext(ToastContext);
@@ -128,6 +195,7 @@ function TemplatesListPage() {
   const [showCreateFromScratchMenu, setShowCreateFromScratchMenu] = useState(false);
   const [galleryTab, setGalleryTab] = useState("your");
   const [gallerySort, setGallerySort] = useState("recent");
+  const [galleryCategory, setGalleryCategory] = useState("all");
   const [gallerySearch, setGallerySearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -135,8 +203,9 @@ function TemplatesListPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState([]);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [previewItem, setPreviewItem] = useState(null);
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setIsLoading(true);
 
     try {
@@ -147,15 +216,21 @@ function TemplatesListPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     loadTemplates();
-  }, []);
+  }, [loadTemplates]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter, rowsPerPage]);
+
+  useEffect(() => {
+    if (galleryTab !== "ready") {
+      setGalleryCategory("all");
+    }
+  }, [galleryTab]);
 
   useEffect(() => {
     if (!openMenuId) {
@@ -212,6 +287,23 @@ function TemplatesListPage() {
     };
   }, [showCreateFromScratchMenu]);
 
+  useEffect(() => {
+    if (!previewItem) {
+      return undefined;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setPreviewItem(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [previewItem]);
+
   const handleDelete = async (id) => {
     try {
       await api.delete(`/templates/${id}`);
@@ -256,7 +348,7 @@ function TemplatesListPage() {
     }
 
     if (action === "html") {
-      navigate("/email-builder/new?mode=html");
+      navigate("/html-editor/new");
     }
   };
 
@@ -268,7 +360,37 @@ function TemplatesListPage() {
     }
 
     handleCloseEmailGallery();
-    navigate(`/templates/new?preset=${item.key}`);
+    navigate(`/email-builder/new?preset=${item.key}`);
+  };
+
+  const openPreviewItem = (item) => {
+    setPreviewItem(item);
+  };
+
+  const closePreviewItem = () => {
+    setPreviewItem(null);
+  };
+
+  const getPreviewHtml = (item) => {
+    if (!item) return "";
+
+    if (galleryTab === "your") {
+      return item.htmlContent || item.advancedHtml || item.previewHtml || "";
+    }
+
+    if (item.form) {
+      return buildTemplateHtml(item.form);
+    }
+
+    return item.htmlContent || item.previewHtml || "";
+  };
+
+  const getPreviewLabel = (item) => {
+    if (!item) return "#00";
+    const matchIndex = emailGalleryItems.findIndex(
+      (candidate) => (candidate._id || candidate.key || candidate.id) === (item._id || item.key || item.id),
+    );
+    return `#${String(matchIndex >= 0 ? matchIndex + 1 : 1).padStart(2, "0")}`;
   };
 
   const filteredTemplates = useMemo(() => {
@@ -330,7 +452,7 @@ function TemplatesListPage() {
   };
 
   const openEditor = (templateId) => {
-    navigate(`/templates/${templateId}/edit`);
+    navigate(`/email-builder/${templateId}`);
   };
 
   const clearSelection = () => setSelectedTemplateIds([]);
@@ -338,6 +460,7 @@ function TemplatesListPage() {
   const emailGalleryItems = useMemo(() => {
     const source = galleryTab === "your" ? templates : templatePresets;
     const query = gallerySearch.trim().toLowerCase();
+    const selectedCategory = String(galleryCategory || "all").trim().toLowerCase();
 
     const filtered = source.filter((item) => {
       const name = String(item.name || "").toLowerCase();
@@ -345,6 +468,10 @@ function TemplatesListPage() {
       const previewText = String(item.previewText || "").toLowerCase();
       const description = String(item.description || "").toLowerCase();
       const category = String(item.category || "").toLowerCase();
+
+      if (galleryTab === "ready" && selectedCategory !== "all" && category.trim().toLowerCase() !== selectedCategory) {
+        return false;
+      }
 
       if (!query) return true;
 
@@ -362,7 +489,7 @@ function TemplatesListPage() {
       const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
       return rightTime - leftTime;
     });
-  }, [gallerySearch, gallerySort, galleryTab, templates]);
+  }, [gallerySearch, gallerySort, galleryTab, galleryCategory, templates]);
 
   const emailGalleryTitle =
     galleryTab === "your" ? "All saved templates" : "Ready-to-use templates";
@@ -538,9 +665,20 @@ function TemplatesListPage() {
                       </label>
 
                       <div className="min-w-0">
-                        <h2 className="truncate text-[16px] font-semibold tracking-tight text-ui-strong">
-                          {template.name}
-                        </h2>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <h2 className="truncate text-[16px] font-semibold tracking-tight text-ui-strong">
+                            {template.name}
+                          </h2>
+                          <button
+                            type="button"
+                            onClick={() => openPreviewItem(template)}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                            aria-label={`Preview ${template.name}`}
+                            title="Preview template"
+                          >
+                            <EyeIcon />
+                          </button>
+                        </div>
                         <p className="mt-2 text-[14px] text-ui-body">
                           #{(currentPage - 1) * rowsPerPage + index + 1}, {getTemplateTimestampLabel(template)}
                         </p>
@@ -790,10 +928,8 @@ function TemplatesListPage() {
                         : "border-transparent bg-transparent text-slate-800 hover:bg-slate-100"
                     }`}
                   >
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-[4px] border border-current" />
                     <span>Your templates</span>
                   </button>
-
                   <button
                     type="button"
                     onClick={() => setGalleryTab("ready")}
@@ -803,9 +939,6 @@ function TemplatesListPage() {
                         : "border-transparent bg-transparent text-slate-800 hover:bg-slate-100"
                     }`}
                   >
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-[4px] border border-current text-[12px] font-bold">
-                      +
-                    </span>
                     <span>Ready-to-use</span>
                   </button>
                 </div>
@@ -849,6 +982,30 @@ function TemplatesListPage() {
                   />
                 </div>
 
+                {galleryTab === "ready" ? (
+                  <div className="relative w-full md:w-[210px]">
+                    <select
+                      className="field h-12 appearance-none rounded-[18px] bg-white pr-10 text-[16px]"
+                      value={galleryCategory}
+                      onChange={(event) => setGalleryCategory(event.target.value)}
+                    >
+                      <option value="all">All categories</option>
+                      {readyToUseTemplateCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 fill-none stroke-slate-500"
+                      strokeWidth="2"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                ) : null}
+
                 <div className="relative w-full md:w-[180px]">
                   <select
                     className="field h-12 appearance-none rounded-[18px] bg-white pr-10 text-[16px]"
@@ -891,38 +1048,32 @@ function TemplatesListPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleUseGalleryItem(item)}
+                              onClick={() => openPreviewItem(item)}
                               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
                               aria-label={`Preview ${item.name || item.title || "template"}`}
                             >
-                              <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current" strokeWidth="2">
-                                <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </svg>
+                              <EyeIcon />
                             </button>
                           </div>
 
                           <div className="px-4 pb-4 pt-5">
-                            <div className="rounded-[18px] border border-slate-100 bg-[#f7f8fb] p-4">
-                              <div className="space-y-3">
-                                <div className="mx-auto h-3 w-28 rounded-full bg-slate-400/90" />
-                                <div className="mx-auto flex h-28 items-center justify-center rounded-[16px] bg-white/70">
-                                  <div className="w-full max-w-[160px] space-y-2">
-                                    <div className="mx-auto h-10 w-10 rounded-md bg-slate-300/80" />
-                                    <div className="mx-auto h-2.5 w-24 rounded-full bg-slate-400/80" />
-                                    <div className="mx-auto h-2.5 w-18 rounded-full bg-slate-300/80" />
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="h-10 rounded-md bg-white/80" />
-                                  <div className="h-10 rounded-md bg-white/80" />
-                                </div>
+                            <div className="overflow-hidden rounded-[18px] border border-slate-100 bg-[#f7f8fb]">
+                              <div className="h-[170px] overflow-hidden bg-white p-3">
+                                <TemplatePreviewFrame
+                                  title={`${String(item.name || item.title || "Template")} thumbnail`}
+                                  html={getPreviewHtml(item)}
+                                  className="pointer-events-none rounded-[12px] border border-slate-100"
+                                  scale={0.56}
+                                />
                               </div>
                             </div>
                           </div>
 
                           <div className="space-y-3 px-4 pb-5">
                             <p className="text-[14px] text-slate-500">{previewLabel}</p>
+                            <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                              {String(item.category || "Template")}
+                            </p>
                             <h4 className="min-h-[56px] text-[18px] font-semibold leading-7 text-slate-900">
                               {item.name || item.title}
                             </h4>
@@ -952,6 +1103,67 @@ function TemplatesListPage() {
                 )}
               </div>
             </section>
+          </div>
+        </ModalShell>
+      ) : null}
+
+      {previewItem ? (
+        <ModalShell onClose={closePreviewItem} className="max-w-[1120px]">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+            <div>
+              <h2 className="text-[26px] font-semibold tracking-tight text-slate-900">
+                {String(previewItem.name || previewItem.title || "Template")}
+              </h2>
+              <p className="mt-3 text-[14px] text-slate-500">{getPreviewLabel(previewItem)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={closePreviewItem}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+              aria-label="Close preview"
+            >
+              <svg viewBox="0 0 24 24" className="h-6 w-6 fill-none stroke-current" strokeWidth="2">
+                <path d="M18 6 6 18" />
+                <path d="M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="px-6 py-8">
+            <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-4">
+              <div className="overflow-hidden rounded-[14px] border border-slate-100 bg-white shadow-sm">
+                <iframe
+                  title={`${String(previewItem.name || previewItem.title || "Template")} preview`}
+                  srcDoc={buildPreviewHtmlDoc(
+                    getPreviewHtml(previewItem),
+                    String(previewItem.name || previewItem.title || "Template"),
+                  )}
+                  className="block h-[64vh] min-h-[520px] w-full bg-white"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-5">
+            <button
+              type="button"
+              onClick={closePreviewItem}
+              className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-[#6b63ff] transition hover:bg-slate-50"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const item = previewItem;
+                closePreviewItem();
+                handleUseGalleryItem(item);
+              }}
+              className="rounded-full bg-[#20242f] px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(32,36,47,0.2)] transition hover:bg-[#151822]"
+            >
+              Use template
+            </button>
           </div>
         </ModalShell>
       ) : null}

@@ -19,6 +19,7 @@ import EmailBuilderPage from "./pages/dashboard/EmailBuilderPage.jsx";
 import OverviewPage from "./pages/dashboard/OverviewPage.jsx";
 import PlaceholderPage from "./pages/dashboard/PlaceholderPage.jsx";
 import ReportsPage from "./pages/dashboard/ReportsPage.jsx";
+import HtmlCustomCodeEditorPage from "./pages/dashboard/HtmlCustomCodeEditorPage.jsx";
 import SimpleEmailEditorPage from "./pages/dashboard/SimpleEmailEditorPage.jsx";
 import SegmentFormPage from "./pages/dashboard/SegmentFormPage.jsx";
 import SegmentsListPage from "./pages/dashboard/SegmentsListPage.jsx";
@@ -314,6 +315,26 @@ function App() {
             <ProtectedRoute>
               <PermissionGate permission="edit_content">
                 <SimpleEmailEditorPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/html-editor/new"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <HtmlCustomCodeEditorPage />
+              </PermissionGate>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/html-editor/:id"
+          element={
+            <ProtectedRoute>
+              <PermissionGate permission="edit_content">
+                <HtmlCustomCodeEditorPage />
               </PermissionGate>
             </ProtectedRoute>
           }

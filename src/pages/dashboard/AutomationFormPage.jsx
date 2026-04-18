@@ -1,5 +1,6 @@
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import AutomationPreviewTestModal from '../../components/dashboard/AutomationPreviewTestModal.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
 import PageHeader from '../../components/ui/PageHeader.jsx'
 import { ToastContext } from '../../context/ToastContext.jsx'
@@ -84,6 +85,78 @@ const getPreviewStepLabel = (step = {}, index = 0) => {
   return `${index + 1}. ${labelMap[step.type] || step.type || 'Step'}`
 }
 
+const stepTypeHelpText = {
+  delay: 'Pause the automation for some time before the next step.',
+  condition: 'Check whether a rule is true or false before continuing.',
+  send_email: 'Send an email to the subscriber.',
+  add_tag: 'Add a tag to the subscriber profile.',
+  remove_tag: 'Remove a tag from the subscriber profile.',
+  webhook: 'Call an external URL or system.',
+  exit: 'Stop the workflow immediately.',
+}
+
+function HelpIcon({ text }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const wrapperRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined
+    }
+
+    const handlePointerDown = (event) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setIsOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  return (
+    <span ref={wrapperRef} className="relative inline-flex">
+      <button
+        type="button"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-[11px] font-bold leading-none text-slate-500 transition hover:border-slate-400 hover:text-slate-700"
+        aria-label={text}
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => setIsOpen(false)}
+        onFocus={() => setIsOpen(true)}
+        onBlur={() => setIsOpen(false)}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        ?
+      </button>
+      {isOpen ? (
+        <div className="absolute left-1/2 top-7 z-20 w-72 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs leading-6 text-slate-600 shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+          {text}
+        </div>
+      ) : null}
+    </span>
+  )
+}
+
+function FieldLabel({ label, help }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span className="text-[12px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</span>
+      {help ? <HelpIcon text={help} /> : null}
+    </div>
+  )
+}
+
 function StepEditor({ step, index, templates, onChange, onRemove }) {
   return (
     <article className="rounded-[24px] border border-slate-100 bg-slate-50 p-5">
@@ -93,6 +166,10 @@ function StepEditor({ step, index, templates, onChange, onRemove }) {
             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500">
               Step {index + 1}
             </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-slate-900">Step type</span>
+              <HelpIcon text={stepTypeHelpText[step.type] || 'Pick what this step should do in the workflow.'} />
+            </div>
             <select
               className="field max-w-[220px]"
               value={step.type}
@@ -107,168 +184,204 @@ function StepEditor({ step, index, templates, onChange, onRemove }) {
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <input
-              className="field"
-              placeholder="Step title"
-              value={step.title}
-              onChange={(event) => onChange(index, { ...step, title: event.target.value })}
-            />
-            <input
-              className="field"
-              placeholder="Short description"
-              value={step.description}
-              onChange={(event) => onChange(index, { ...step, description: event.target.value })}
-            />
+            <div>
+              <FieldLabel label="Step title" help="A short name that helps you identify this step later." />
+              <input
+                className="field"
+                placeholder="Step title"
+                value={step.title}
+                onChange={(event) => onChange(index, { ...step, title: event.target.value })}
+              />
+            </div>
+            <div>
+              <FieldLabel label="Short description" help="Optional note about why this step is included." />
+              <input
+                className="field"
+                placeholder="Short description"
+                value={step.description}
+                onChange={(event) => onChange(index, { ...step, description: event.target.value })}
+              />
+            </div>
           </div>
 
           <div className="mt-4">
             {step.type === 'delay' ? (
               <div className="grid gap-4 md:grid-cols-2">
-                <input
-                  className="field"
-                  type="number"
-                  min="1"
-                  value={step.config?.value || ''}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, value: event.target.value },
-                    })
-                  }
-                />
-                <select
-                  className="field"
-                  value={step.config?.unit || 'hours'}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, unit: event.target.value },
-                    })
-                  }
-                >
-                  <option value="minutes">Minutes</option>
-                  <option value="hours">Hours</option>
-                  <option value="days">Days</option>
-                </select>
+                <div>
+                  <FieldLabel label="Delay value" help="How long this step should pause before continuing." />
+                  <input
+                    className="field"
+                    type="number"
+                    min="1"
+                    value={step.config?.value || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, value: event.target.value },
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="Delay unit" help="Choose whether the delay is in minutes, hours, or days." />
+                  <select
+                    className="field"
+                    value={step.config?.unit || 'hours'}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, unit: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="minutes">Minutes</option>
+                    <option value="hours">Hours</option>
+                    <option value="days">Days</option>
+                  </select>
+                </div>
               </div>
             ) : null}
 
             {step.type === 'condition' ? (
               <div className="grid gap-4 md:grid-cols-3">
-                <input
-                  className="field"
-                  placeholder="Field"
-                  value={step.config?.field || ''}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, field: event.target.value },
-                    })
-                  }
-                />
-                <select
-                  className="field"
-                  value={step.config?.operator || 'gte'}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, operator: event.target.value },
-                    })
-                  }
-                >
-                  <option value="eq">Equals</option>
-                  <option value="gte">Greater than or equal</option>
-                  <option value="lte">Less than or equal</option>
-                  <option value="contains">Contains</option>
-                </select>
-                <input
-                  className="field"
-                  placeholder="Value"
-                  value={step.config?.value || ''}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, value: event.target.value },
-                    })
-                  }
-                />
+                <div>
+                  <FieldLabel label="Field" help="The subscriber detail you want to check in this rule." />
+                  <input
+                    className="field"
+                    placeholder="Field"
+                    value={step.config?.field || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, field: event.target.value },
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="Operator" help="How the field should be compared with the value." />
+                  <select
+                    className="field"
+                    value={step.config?.operator || 'gte'}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, operator: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="eq">Equals</option>
+                    <option value="gte">Greater than or equal</option>
+                    <option value="lte">Less than or equal</option>
+                    <option value="contains">Contains</option>
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel label="Value" help="The value used for the comparison." />
+                  <input
+                    className="field"
+                    placeholder="Value"
+                    value={step.config?.value || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, value: event.target.value },
+                      })
+                    }
+                  />
+                </div>
               </div>
             ) : null}
 
             {step.type === 'send_email' ? (
               <div className="grid gap-4 md:grid-cols-2">
-                <select
-                  className="field"
-                  value={step.config?.templateId || ''}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, templateId: event.target.value },
-                    })
-                  }
-                >
-                  <option value="">Select template</option>
-                  {templates.map((template) => (
-                    <option key={template._id} value={template._id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
+                <div>
+                  <FieldLabel label="Template" help="Select the email template this step will send." />
+                  <select
+                    className="field"
+                    value={step.config?.templateId || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, templateId: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="">Select template</option>
+                    {templates.map((template) => (
+                      <option key={template._id} value={template._id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel label="Subject override" help="Optional custom subject line for this email." />
+                  <input
+                    className="field"
+                    placeholder="Optional subject override"
+                    value={step.config?.subjectOverride || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, subjectOverride: event.target.value },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            {step.type === 'add_tag' || step.type === 'remove_tag' ? (
+              <div>
+                <FieldLabel label="Tag name" help="The tag that will be added to or removed from the subscriber." />
                 <input
                   className="field"
-                  placeholder="Optional subject override"
-                  value={step.config?.subjectOverride || ''}
+                  placeholder="Tag name"
+                  value={step.config?.tag || ''}
                   onChange={(event) =>
                     onChange(index, {
                       ...step,
-                      config: { ...step.config, subjectOverride: event.target.value },
+                      config: { ...step.config, tag: event.target.value },
                     })
                   }
                 />
               </div>
             ) : null}
 
-            {step.type === 'add_tag' || step.type === 'remove_tag' ? (
-              <input
-                className="field"
-                placeholder="Tag name"
-                value={step.config?.tag || ''}
-                onChange={(event) =>
-                  onChange(index, {
-                    ...step,
-                    config: { ...step.config, tag: event.target.value },
-                  })
-                }
-              />
-            ) : null}
-
             {step.type === 'webhook' ? (
               <div className="grid gap-4 md:grid-cols-[1fr_160px]">
-                <input
-                  className="field"
-                  placeholder="Webhook URL"
-                  value={step.config?.url || ''}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, url: event.target.value },
-                    })
-                  }
-                />
-                <select
-                  className="field"
-                  value={step.config?.method || 'POST'}
-                  onChange={(event) =>
-                    onChange(index, {
-                      ...step,
-                      config: { ...step.config, method: event.target.value },
-                    })
-                  }
-                >
-                  <option value="POST">POST</option>
-                  <option value="GET">GET</option>
-                  <option value="PUT">PUT</option>
-                </select>
+                <div>
+                  <FieldLabel label="Webhook URL" help="The URL that this step will call." />
+                  <input
+                    className="field"
+                    placeholder="Webhook URL"
+                    value={step.config?.url || ''}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, url: event.target.value },
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel label="Method" help="The HTTP method used to call the webhook." />
+                  <select
+                    className="field"
+                    value={step.config?.method || 'POST'}
+                    onChange={(event) =>
+                      onChange(index, {
+                        ...step,
+                        config: { ...step.config, method: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="POST">POST</option>
+                    <option value="GET">GET</option>
+                    <option value="PUT">PUT</option>
+                  </select>
+                </div>
               </div>
             ) : null}
           </div>
@@ -296,6 +409,8 @@ function AutomationFormPage() {
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [previewEmail, setPreviewEmail] = useState(null)
   const presetKey = searchParams.get('preset') || ''
   const selectedPreset = useMemo(
     () => dripCampaignPresets.find((preset) => preset.key === presetKey) || null,
@@ -380,10 +495,12 @@ function AutomationFormPage() {
     return ''
   }
 
-  const handleSubmit = async (nextStatus = form.status) => {
+  const handleSubmit = async (nextStatus = form.status, options = {}) => {
+    const { redirectAfterSave = true } = options
     const validationMessage = validateForm()
     if (validationMessage) {
       setError(validationMessage)
+      toast.error(validationMessage)
       return
     }
 
@@ -401,18 +518,83 @@ function AutomationFormPage() {
       if (id) {
         await api.put(`/automations/${id}`, payload)
         toast.success('Workflow updated')
+        if (redirectAfterSave) {
+          navigate('/automations')
+        }
+        return { _id: id, ...payload }
       } else {
         const { data } = await api.post('/automations', payload)
         toast.success('Workflow created')
-        navigate(`/automations/${data._id}`)
-        return
+        if (redirectAfterSave) {
+          navigate(`/automations/${data._id}`)
+        }
+        return data
       }
-
-      navigate('/automations')
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Unable to save workflow')
+      toast.error(requestError.response?.data?.message || 'Unable to save workflow')
+      return null
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handlePreviewTestRun = async ({ recipientEmail, firstName, lastName }) => {
+    const validationMessage = validateForm()
+    if (validationMessage) {
+      setError(validationMessage)
+      toast.error(validationMessage)
+      return
+    }
+
+    let workflowId = id
+
+    if (!workflowId) {
+      const savedWorkflow = await handleSubmit(form.status, { redirectAfterSave: false })
+      workflowId = savedWorkflow?._id
+    }
+
+    if (!workflowId) {
+      toast.error('Save the workflow before sending a test')
+      return
+    }
+
+    try {
+      await api.post(`/automations/${workflowId}/sample-execution`, {
+        recipientEmail,
+        firstName,
+        lastName,
+      })
+      toast.success('Test email sent')
+      setShowPreviewModal(false)
+      if (!id && workflowId) {
+        navigate(`/automations/${workflowId}/edit`, { replace: true })
+      }
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message || 'Unable to process sample execution')
+    }
+  }
+
+  const handleOpenPreviewModal = async () => {
+    const validationMessage = validateForm()
+    if (validationMessage) {
+      setError(validationMessage)
+      toast.error(validationMessage)
+      return
+    }
+
+    try {
+      const { data } = await api.post('/automations/preview-email', {
+        workflow: {
+          ...form,
+          steps: form.steps,
+        },
+      })
+
+      setPreviewEmail(data)
+      setShowPreviewModal(true)
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message || 'Unable to load workflow preview')
     }
   }
 
@@ -439,9 +621,18 @@ function AutomationFormPage() {
               <span className="soft-pill">{meta.ecommerceHooks?.message}</span>
             </div>
           </div>
-          <Link to="/automations" className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]">
-            Back to automations
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleOpenPreviewModal}
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Preview &amp; test
+            </button>
+            <Link to="/automations" className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]">
+              Back to automations
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -455,74 +646,95 @@ function AutomationFormPage() {
         >
           <section className="shell-card-strong space-y-6 p-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <input
-                className="field md:col-span-2"
-                placeholder="Workflow name"
-                value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              />
-              <textarea
-                className="field md:col-span-2 min-h-[120px] resize-y"
-                placeholder="Describe what this workflow is meant to achieve"
-                value={form.description}
-                onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-              />
-              <select
-                className="field"
-                value={form.trigger}
-                onChange={(event) => setForm((current) => ({ ...current, trigger: event.target.value }))}
-              >
-                {meta.triggers.map((trigger) => (
-                  <option key={trigger} value={trigger}>
-                    {triggerLabels[trigger] || trigger}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="field"
-                value={form.status}
-                onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
-              >
-                {meta.statuses.filter((status) => status !== 'archived').map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="field"
-                value={form.entrySegmentId}
-                onChange={(event) => setForm((current) => ({ ...current, entrySegmentId: event.target.value }))}
-              >
-                <option value="">All eligible subscribers</option>
-                {meta.segments.map((segment) => (
-                  <option key={segment._id} value={segment._id}>
-                    {segment.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="field"
-                placeholder="Optional delay window hint"
-                value={form.triggerConfig.delayWindow}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    triggerConfig: { ...current.triggerConfig, delayWindow: event.target.value },
-                  }))
-                }
-              />
-              <input
-                className="field md:col-span-2"
-                placeholder="Internal workflow notes"
-                value={form.triggerConfig.notes}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    triggerConfig: { ...current.triggerConfig, notes: event.target.value },
-                  }))
-                }
-              />
+              <div className="md:col-span-2">
+                <FieldLabel label="Workflow name" help="The name you and your team will see." />
+                <input
+                  className="field"
+                  placeholder="Workflow name"
+                  value={form.name}
+                  onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <FieldLabel label="Description" help="A short summary of what this workflow does." />
+                <textarea
+                  className="field min-h-[120px] resize-y"
+                  placeholder="Describe what this workflow is meant to achieve"
+                  value={form.description}
+                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+                />
+              </div>
+              <div>
+                <FieldLabel label="Trigger" help="The event that starts this automation." />
+                <select
+                  className="field"
+                  value={form.trigger}
+                  onChange={(event) => setForm((current) => ({ ...current, trigger: event.target.value }))}
+                >
+                  {meta.triggers.map((trigger) => (
+                    <option key={trigger} value={trigger}>
+                      {triggerLabels[trigger] || trigger}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <FieldLabel label="Status" help="Draft keeps it off. Active turns it on." />
+                <select
+                  className="field"
+                  value={form.status}
+                  onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
+                >
+                  {meta.statuses.filter((status) => status !== 'archived').map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <FieldLabel label="Audience" help="Choose who can enter this workflow." />
+                <select
+                  className="field"
+                  value={form.entrySegmentId}
+                  onChange={(event) => setForm((current) => ({ ...current, entrySegmentId: event.target.value }))}
+                >
+                  <option value="">All eligible subscribers</option>
+                  {meta.segments.map((segment) => (
+                    <option key={segment._id} value={segment._id}>
+                      {segment.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <FieldLabel label="Delay window hint" help="A small note about timing, if needed." />
+                <input
+                  className="field"
+                  placeholder="Optional delay window hint"
+                  value={form.triggerConfig.delayWindow}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      triggerConfig: { ...current.triggerConfig, delayWindow: event.target.value },
+                    }))
+                  }
+                />
+              </div>
+              <div className="md:col-span-2">
+                <FieldLabel label="Internal workflow notes" help="Private notes for your team only." />
+                <input
+                  className="field"
+                  placeholder="Internal workflow notes"
+                  value={form.triggerConfig.notes}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      triggerConfig: { ...current.triggerConfig, notes: event.target.value },
+                    }))
+                  }
+                />
+              </div>
             </div>
           </section>
 
@@ -530,7 +742,11 @@ function AutomationFormPage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-400">Workflow steps</p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-950">Sequence builder</h3>
+                {/* <h3 className="mt-1 text-xl font-semibold text-slate-950">Sequence builder</h3> */}
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  These steps define what happens after the trigger starts the workflow. Use them to wait, check rules,
+                  send emails, add tags, or call a webhook.
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {Object.keys(stepTypeLabels).map((type) => (
@@ -655,6 +871,21 @@ function AutomationFormPage() {
           </section>
         </div>
       </div>
+
+      <AutomationPreviewTestModal
+        open={showPreviewModal}
+        workflow={{
+          ...form,
+          _id: id || 'preview-workflow',
+          steps: form.steps,
+        }}
+        previewEmail={previewEmail}
+        onClose={() => {
+          setShowPreviewModal(false)
+          setPreviewEmail(null)
+        }}
+        onRunSample={handlePreviewTestRun}
+      />
     </div>
   )
 }

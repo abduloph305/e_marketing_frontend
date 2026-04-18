@@ -1,9 +1,10 @@
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import EmptyState from '../../components/ui/EmptyState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
 import Modal from '../../components/ui/Modal.jsx'
 import PageHeader from '../../components/ui/PageHeader.jsx'
+import AutomationPreviewTestModal from '../../components/dashboard/AutomationPreviewTestModal.jsx'
 import StatusBadge from '../../components/ui/StatusBadge.jsx'
 import { ToastContext } from '../../context/ToastContext.jsx'
 import { dripCampaignPresets, triggerLabels, workflowStatusTabs } from '../../data/automations.js'
@@ -25,6 +26,12 @@ function AutomationListPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [showCreateChooser, setShowCreateChooser] = useState(false)
   const [showRecipeGallery, setShowRecipeGallery] = useState(false)
+  const [previewWorkflow, setPreviewWorkflow] = useState(null)
+  const [previewEmail, setPreviewEmail] = useState(null)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [actionMenuWorkflowId, setActionMenuWorkflowId] = useState(null)
+  const actionMenuRef = useRef(null)
 
   const loadWorkflows = async (page = 1, nextStatus = statusTab, nextFilters = filters) => {
     setIsLoading(true)
@@ -57,6 +64,17 @@ function AutomationListPage() {
     loadWorkflows(1)
   }, [])
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setActionMenuWorkflowId(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const handleToggleStatus = async (workflow) => {
     try {
       await api.post(`/automations/${workflow._id}/${workflow.isActive ? 'deactivate' : 'activate'}`)
@@ -77,6 +95,50 @@ function AutomationListPage() {
     navigate('/automations/new')
   }
 
+  const handlePreviewWorkflow = async (workflowId) => {
+    setIsPreviewLoading(true)
+    setPreviewWorkflow(null)
+    setPreviewEmail(null)
+
+    try {
+      const { data } = await api.get(`/automations/${workflowId}`)
+      setPreviewWorkflow(data)
+      const previewResponse = await api.post('/automations/preview-email', {
+        workflowId,
+      })
+      setPreviewEmail(previewResponse.data)
+      setShowPreviewModal(true)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Unable to load workflow preview')
+    } finally {
+      setIsPreviewLoading(false)
+    }
+  }
+
+  const handleRunSampleExecution = async ({ recipientEmail, firstName, lastName }) => {
+    if (!previewWorkflow?._id) {
+      toast.error('Workflow preview is not ready')
+      return
+    }
+
+    if (!recipientEmail?.trim()) {
+      toast.error('Enter a recipient email address')
+      return
+    }
+
+    try {
+      await api.post(`/automations/${previewWorkflow._id}/sample-execution`, {
+        recipientEmail,
+        firstName,
+        lastName,
+      })
+      toast.success('Test email sent')
+      setShowPreviewModal(false)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Unable to process sample execution')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="brevo-card p-6 md:p-8">
@@ -88,7 +150,7 @@ function AutomationListPage() {
             </div>
           </div>
           <button type="button" className="primary-button" onClick={() => setShowCreateChooser(true)}>
-            Create workflow
+            Create Automation
           </button>
         </div>
       </section>
@@ -105,7 +167,7 @@ function AutomationListPage() {
               }}
               className={`brevo-tab capitalize ${statusTab === tab ? 'brevo-tab-active' : ''}`}
             >
-              {tab === 'all' ? 'All workflows' : tab}
+              {tab === 'all' ? 'All ' : tab}
             </button>
           ))}
         </div>
@@ -162,9 +224,24 @@ function AutomationListPage() {
                   {workflows.map((workflow) => (
                     <tr key={workflow._id} className="border-b border-[var(--border-soft)] align-top last:border-b-0">
                       <td className="px-6 py-5">
-                        <Link to={`/automations/${workflow._id}`} className="text-[15px] font-semibold text-[#101828]">
-                          {workflow.name}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link to={`/automations/${workflow._id}`} className="text-[15px] font-semibold text-[#101828]">
+                            {workflow.name}
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewWorkflow(workflow._id)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                            aria-label={`Preview ${workflow.name}`}
+                            title="Preview & test"
+                            disabled={isPreviewLoading}
+                          >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+                              <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          </button>
+                        </div>
                         <p className="mt-1 text-sm text-[#667085]">
                           {workflow.description || 'No workflow description yet'}
                         </p>
@@ -183,23 +260,68 @@ function AutomationListPage() {
                         <StatusBadge status={workflow.status} />
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex flex-wrap gap-3">
-                          <Link className="font-medium text-[#101828]" to={`/automations/${workflow._id}`}>
-                            View
-                          </Link>
-                          <Link className="font-medium text-[#166534]" to={`/automations/${workflow._id}/edit`}>
-                            Edit
-                          </Link>
+                        <div className="relative inline-flex" ref={actionMenuWorkflowId === workflow._id ? actionMenuRef : null}>
                           <button
                             type="button"
-                            className="font-medium text-[#b54708]"
-                            onClick={() => handleToggleStatus(workflow)}
+                            onClick={() =>
+                              setActionMenuWorkflowId((current) =>
+                                current === workflow._id ? null : workflow._id,
+                              )
+                            }
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                            aria-label={`Actions for ${workflow.name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={actionMenuWorkflowId === workflow._id}
                           >
-                            {workflow.isActive ? 'Deactivate' : 'Activate'}
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current" aria-hidden="true">
+                              <circle cx="12" cy="5" r="1.7" />
+                              <circle cx="12" cy="12" r="1.7" />
+                              <circle cx="12" cy="19" r="1.7" />
+                            </svg>
                           </button>
-                          <Link className="font-medium text-[#667085]" to={`/automations/${workflow._id}/executions`}>
-                            Logs
-                          </Link>
+
+                          {actionMenuWorkflowId === workflow._id ? (
+                            <div
+                              role="menu"
+                              className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.14)]"
+                            >
+                              <Link
+                                role="menuitem"
+                                className="block rounded-xl px-3 py-2 text-sm font-medium text-[#101828] hover:bg-slate-50"
+                                to={`/automations/${workflow._id}`}
+                                onClick={() => setActionMenuWorkflowId(null)}
+                              >
+                                View
+                              </Link>
+                              <Link
+                                role="menuitem"
+                                className="block rounded-xl px-3 py-2 text-sm font-medium text-[#166534] hover:bg-slate-50"
+                                to={`/automations/${workflow._id}/edit`}
+                                onClick={() => setActionMenuWorkflowId(null)}
+                              >
+                                Edit
+                              </Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="block w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-[#b54708] hover:bg-slate-50"
+                                onClick={() => {
+                                  setActionMenuWorkflowId(null)
+                                  handleToggleStatus(workflow)
+                                }}
+                              >
+                                {workflow.isActive ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <Link
+                                role="menuitem"
+                                className="block rounded-xl px-3 py-2 text-sm font-medium text-[#667085] hover:bg-slate-50"
+                                to={`/automations/${workflow._id}/executions`}
+                                onClick={() => setActionMenuWorkflowId(null)}
+                              >
+                                Logs
+                              </Link>
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -239,7 +361,8 @@ function AutomationListPage() {
               description="Create a workflow, switch status tabs, or widen the filters to continue building your automation layer."
               action={
                 <Link to="/automations/new" className="primary-button">
-                  Create workflow
+                  Create Automation
+
                 </Link>
               }
             />
@@ -301,23 +424,7 @@ function AutomationListPage() {
           className="max-w-6xl"
           bodyClassName="space-y-4"
         >
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#667085]">
-                Drip Campaigns
-              </p>
-              <h3 className="mt-1 text-[20px] font-semibold text-[#101828]">
-                Quick-start automation recipes
-              </h3>
-              <p className="mt-1 text-sm text-[#667085]">
-                Use these as ready-made workflows for signup, recovery, reminders, and offers.
-              </p>
-            </div>
-            <p className="text-xs text-[#667085]">
-              Each preset opens the builder with a matching trigger and starter steps.
-            </p>
-          </div>
-
+        
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {dripCampaignPresets.map((preset) => (
               <Link
@@ -336,6 +443,18 @@ function AutomationListPage() {
           </div>
         </Modal>
       ) : null}
+
+      <AutomationPreviewTestModal
+        open={showPreviewModal}
+        workflow={previewWorkflow}
+        previewEmail={previewEmail}
+        onClose={() => {
+          setShowPreviewModal(false)
+          setPreviewWorkflow(null)
+          setPreviewEmail(null)
+        }}
+        onRunSample={handleRunSampleExecution}
+      />
     </div>
   )
 }
