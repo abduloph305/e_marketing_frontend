@@ -19,6 +19,7 @@ export const subscriberSources = [
 export const segmentFieldOptions = [
   { value: 'status', label: 'Status' },
   { value: 'source', label: 'Source' },
+  { value: 'sourceLocation', label: 'Source / location' },
   { value: 'tags', label: 'Tags' },
   { value: 'country', label: 'Country' },
   { value: 'state', label: 'State' },
@@ -46,6 +47,10 @@ export const operatorOptions = {
     { value: 'in', label: 'is any of' },
   ],
   source: [
+    { value: 'eq', label: 'is' },
+    { value: 'in', label: 'is any of' },
+  ],
+  sourceLocation: [
     { value: 'eq', label: 'is' },
     { value: 'in', label: 'is any of' },
   ],

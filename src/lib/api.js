@@ -1,12 +1,19 @@
 import axios from 'axios'
 
-const token = localStorage.getItem('admin_token')
 const isBrowser = typeof window !== 'undefined'
 const currentHostname = isBrowser ? window.location.hostname : ''
 const isLocalHost =
   currentHostname === 'localhost' ||
   currentHostname === '127.0.0.1' ||
   currentHostname === '::1'
+
+const getStoredToken = () => {
+  if (!isBrowser) {
+    return null
+  }
+
+  return localStorage.getItem('admin_token')
+}
 
 const resolveApiBaseUrl = () => {
   const envBaseUrl = import.meta.env.VITE_API_URL?.trim()
@@ -29,7 +36,17 @@ const resolveApiBaseUrl = () => {
 export const api = axios.create({
   baseURL: resolveApiBaseUrl(),
   withCredentials: true,
-  headers: token ? { Authorization: `Bearer ${token}` } : {},
+})
+
+api.interceptors.request.use((config) => {
+  const token = getStoredToken()
+
+  if (token) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+
+  return config
 })
 
 export const setAuthToken = (nextToken) => {
@@ -41,4 +58,10 @@ export const setAuthToken = (nextToken) => {
 
   localStorage.removeItem('admin_token')
   delete api.defaults.headers.Authorization
+}
+
+const initialToken = getStoredToken()
+
+if (initialToken) {
+  api.defaults.headers.Authorization = `Bearer ${initialToken}`
 }

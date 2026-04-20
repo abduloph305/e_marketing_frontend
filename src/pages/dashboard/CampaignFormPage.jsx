@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
-import Modal from "../../components/ui/Modal.jsx";
+import PreviewAndTestModal from "../../components/dashboard/PreviewAndTestModal.jsx";
 import {
   campaignGoals,
   campaignStatuses,
@@ -130,7 +130,6 @@ function CampaignFormPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [testEmail, setTestEmail] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const broadcastPreset =
@@ -288,8 +287,14 @@ function CampaignFormPage() {
     }
   };
 
-  const handleSendTest = async () => {
-    if (!testEmail.trim()) {
+  const handleSendTest = async (emails) => {
+    const recipientEmails = Array.isArray(emails)
+      ? emails
+          .map((email) => String(email || "").trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+
+    if (!recipientEmails.length) {
       toast.error("Enter a test email address");
       return;
     }
@@ -316,7 +321,7 @@ function CampaignFormPage() {
       }
 
       await api.post(`/email/campaigns/${campaignId}/send-test`, {
-        email: testEmail,
+        emails: recipientEmails,
       });
       toast.success("Test email sent");
       setIsTestModalOpen(false);
@@ -801,41 +806,16 @@ function CampaignFormPage() {
         </div>
       </div>
 
-      {isTestModalOpen ? (
-        <Modal
-          title="Send test email"
-          description="Send this campaign to a single recipient to verify the template and content before launch."
-          onClose={() => setIsTestModalOpen(false)}
-        >
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleSendTest();
-            }}
-          >
-            <input
-              className="field"
-              type="email"
-              placeholder="test@example.com"
-              value={testEmail}
-              onChange={(event) => setTestEmail(event.target.value)}
-            />
-            <p className="text-xs text-[#9a94b2]">
-              New campaigns are saved automatically before the test is sent.
-            </p>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="primary-button"
-                disabled={isSendingTest || isSubmitting}
-              >
-                {isSendingTest ? "Sending..." : "Send test email"}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
+      <PreviewAndTestModal
+        open={isTestModalOpen}
+        title="Preview & test"
+        subject={form.subject}
+      previewText={form.previewText}
+      previewHtml={selectedTemplate?.htmlContent || ""}
+      bodyWidth={760}
+      onClose={() => setIsTestModalOpen(false)}
+      onSendTest={({ emails }) => handleSendTest(emails)}
+    />
     </div>
   );
 }

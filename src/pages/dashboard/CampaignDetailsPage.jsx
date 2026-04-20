@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import PreviewAndTestModal from "../../components/dashboard/PreviewAndTestModal.jsx";
 import OverviewTrendChart from "../../components/dashboard/OverviewTrendChart.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import LoadingState from "../../components/ui/LoadingState.jsx";
@@ -37,20 +38,143 @@ const formatRecurringRule = (campaign) => {
   return `Every ${quantity} ${suffix}`;
 };
 
+const stripTags = (value = "") =>
+  String(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const parseTemplateHtml = (html = "") => {
+  if (!html) {
+    return {};
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const heading = doc.querySelector("h1, h2, h3")?.textContent?.trim() || "";
+    const body = doc.querySelector("p")?.textContent?.trim() || "";
+    const link = doc.querySelector("a");
+    const image = doc.querySelector("img");
+
+    return {
+      headline: heading || undefined,
+      bodyText: body || stripTags(doc.body.textContent || "") || undefined,
+      ctaText: link?.textContent?.trim() || undefined,
+      ctaUrl: link?.getAttribute("href") || undefined,
+      imageUrl: image?.getAttribute("src") || undefined,
+      imageAlt: image?.getAttribute("alt") || undefined,
+    };
+  } catch {
+    return {};
+  }
+};
+
+const buildPreviewHtmlDoc = (html = "", fallbackTitle = "Campaign") => {
+  const cleanedHtml = String(html || "").trim();
+
+  if (cleanedHtml) {
+    return cleanedHtml;
+  }
+
+  return `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">
+    <div style="max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:20px;background:#fff;padding:28px;">
+      <div style="height:12px;width:92px;border-radius:999px;background:#cbd5e1;margin:0 auto 24px;"></div>
+      <div style="height:160px;border-radius:18px;background:linear-gradient(180deg,#eef2ff 0%,#f8fafc 100%);display:flex;align-items:center;justify-content:center;">
+        <div style="text-align:center;">
+          <div style="font-size:18px;font-weight:700;color:#1e293b;">${fallbackTitle}</div>
+          <div style="margin-top:8px;font-size:14px;color:#64748b;">Preview not available</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+};
+
+const buildCampaignPreview = (campaign, template) => {
+  const parsed = parseTemplateHtml(template?.htmlContent || "");
+  const design = template?.designJson || {};
+  const displayName = campaign?.fromName?.trim() || "Your brand";
+  const subject = campaign?.subject?.trim() || template?.subject || "Campaign subject";
+  const previewText =
+    campaign?.previewText?.trim() || template?.previewText || "Preview text appears here";
+
+  return {
+    campaignName: campaign?.name || "Untitled campaign",
+    fromLine: `${displayName} <${campaign?.fromEmail?.trim() || "sender@example.com"}>`,
+    subject,
+    previewText,
+    templateName: template?.name || "No template selected",
+    campaignType: campaign?.type || "—",
+    goal: campaign?.goal || "—",
+    audience: campaign?.segmentId?.name || "All subscribers",
+    status: campaign?.status || "draft",
+    headline: design.headline || parsed.headline || subject,
+    bodyText:
+      design.bodyText ||
+      parsed.bodyText ||
+      "This is a live preview of the campaign email as it will look in an inbox.",
+    ctaText: design.ctaText || parsed.ctaText || "Shop now",
+    ctaUrl: design.ctaUrl || parsed.ctaUrl || "#",
+    imageUrl:
+      design.imageUrl ||
+      parsed.imageUrl ||
+      "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+    imageAlt: design.imageAlt || parsed.imageAlt || "Campaign visual",
+    footerNote:
+      design.footerNote ||
+      "You are receiving this because you subscribed to updates.",
+  };
+};
+
+function DesktopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8" />
+      <path d="M12 16v4" />
+    </svg>
+  );
+}
+
+function MobileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2">
+      <rect x="8" y="2.5" width="8" height="19" rx="2" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
+
 function CampaignDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useContext(ToastContext);
   const [campaign, setCampaign] = useState(null);
+  const [previewTemplate, setPreviewTemplate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [isPreviewTestModalOpen, setIsPreviewTestModalOpen] = useState(false);
+  const [previewModalTab, setPreviewModalTab] = useState("preview");
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [testEmail, setTestEmail] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
-  const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [showFullTimeline, setShowFullTimeline] = useState(false);
   const [showAllRecentEvents, setShowAllRecentEvents] = useState(false);
+  const campaignPreview = useMemo(
+    () => buildCampaignPreview(campaign, previewTemplate),
+    [campaign, previewTemplate],
+  );
+
+  const previewStats = [
+    ["Campaign", campaignPreview.campaignName],
+    ["Type", formatCampaignTypeLabel(campaignPreview.campaignType)],
+    ["Template", campaignPreview.templateName],
+    ["Audience", campaignPreview.audience],
+    ["Goal", campaignPreview.goal],
+    ["Status", campaignPreview.status],
+  ];
 
   const loadCampaign = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -85,6 +209,12 @@ function CampaignDetailsPage() {
     setShowFullTimeline(false);
     setShowAllRecentEvents(false);
   }, [id, campaign?._id]);
+
+  useEffect(() => {
+    if (!isPreviewTestModalOpen) {
+      setPreviewTemplate(null);
+    }
+  }, [isPreviewTestModalOpen]);
 
   useEffect(() => {
     if (isScheduleModalOpen) {
@@ -174,26 +304,26 @@ function CampaignDetailsPage() {
     }
   };
 
-  const handleSendTest = async (event) => {
-    event.preventDefault();
+  const handleSendTest = async (emails) => {
+    const recipientEmails = Array.isArray(emails)
+      ? emails
+          .map((email) => String(email || "").trim().toLowerCase())
+          .filter(Boolean)
+      : [];
 
-    if (!testEmail.trim()) {
+    if (!recipientEmails.length) {
       toast.error("Enter a test email address");
       return;
     }
 
-    setIsSendingTest(true);
-
     try {
-      await api.post(`/email/campaigns/${id}/send-test`, { email: testEmail });
+      await api.post(`/email/campaigns/${id}/send-test`, { emails: recipientEmails });
       toast.success("Test email sent");
-      setIsTestModalOpen(false);
-      setTestEmail("");
+      setIsPreviewTestModalOpen(false);
       loadCampaign();
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to send test email");
-    } finally {
-      setIsSendingTest(false);
+      throw error;
     }
   };
 
@@ -205,6 +335,26 @@ function CampaignDetailsPage() {
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to send campaign");
     }
+  };
+
+  const handleOpenPreview = async (initialTab = "preview") => {
+    try {
+      const templateId = campaign?.templateId?._id;
+
+      if (!templateId) {
+        setPreviewTemplate(null);
+      } else {
+        const { data } = await api.get(`/templates/${templateId}`);
+        setPreviewTemplate(data);
+      }
+    } catch (error) {
+      setPreviewTemplate(null);
+      toast.error(error.response?.data?.message || "Unable to load campaign preview");
+      return;
+    }
+
+    setPreviewModalTab(initialTab);
+    setIsPreviewTestModalOpen(true);
   };
 
   const handlePauseResume = async () => {
@@ -292,6 +442,13 @@ function CampaignDetailsPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => void handleOpenPreview("preview")}
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Preview
+            </button>
             <Link
               to={`/campaigns/${campaign._id}/edit`}
               className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
@@ -300,7 +457,7 @@ function CampaignDetailsPage() {
             </Link>
             <button
               type="button"
-              onClick={() => setIsTestModalOpen(true)}
+              onClick={() => void handleOpenPreview("send")}
               className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
             >
               Send test
@@ -660,33 +817,6 @@ function CampaignDetailsPage() {
         </article>
       </section>
 
-      {isTestModalOpen ? (
-        <Modal
-          title="Send test email"
-          description="Send the current campaign to a single recipient before scheduling or sending now."
-          onClose={() => setIsTestModalOpen(false)}
-        >
-          <form className="space-y-4" onSubmit={handleSendTest}>
-            <input
-              className="field"
-              type="email"
-              placeholder="recipient@example.com"
-              value={testEmail}
-              onChange={(event) => setTestEmail(event.target.value)}
-            />
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="primary-button"
-                disabled={isSendingTest}
-              >
-                {isSendingTest ? "Sending..." : "Send test email"}
-              </button>
-            </div>
-          </form>
-        </Modal>
-      ) : null}
-
       {isScheduleModalOpen ? (
         <Modal
           title="Schedule campaign"
@@ -717,6 +847,21 @@ function CampaignDetailsPage() {
           </form>
         </Modal>
       ) : null}
+
+      <PreviewAndTestModal
+        open={isPreviewTestModalOpen}
+        initialTab={previewModalTab}
+        title="Preview & test"
+        subject={campaignPreview.subject}
+        previewText={campaignPreview.previewText}
+        previewHtml={buildPreviewHtmlDoc(
+          previewTemplate?.htmlContent || "",
+          campaign?.name || "Campaign",
+        )}
+        bodyWidth={760}
+        onClose={() => setIsPreviewTestModalOpen(false)}
+        onSendTest={({ emails }) => handleSendTest(emails)}
+      />
     </div>
   );
 }

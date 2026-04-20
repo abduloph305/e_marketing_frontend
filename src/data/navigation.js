@@ -1,4 +1,4 @@
-export const navigationItems = [
+﻿export const navigationItems = [
   {
     label: "Home",
     path: "/overview",
@@ -23,15 +23,15 @@ export const navigationItems = [
     icon: "templates",
     permission: "edit_content",
   },
-  {
-    label: "Email Builder",
-    path: "/email-builder",
-    description:
-      "Design modular emails with blocks, product cards, and live previews.",
-    group: "Core",
-    icon: "builder",
-    permission: "edit_content",
-  },
+  // {
+  //   label: "Email Builder",
+  //   path: "/email-builder",
+  //   description:
+  //     "Design modular emails with blocks, product cards, and live previews.",
+  //   group: "Core",
+  //   icon: "builder",
+  //   permission: "edit_content",
+  // },
   {
     label: "Audience",
     path: "/audience",

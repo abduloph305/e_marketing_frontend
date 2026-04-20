@@ -20,6 +20,39 @@ const formatLabel = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const formatSourceLocation = (subscriber) => {
+  const customSourceLocations = Array.isArray(subscriber?.customFields?.sourceLocations)
+    ? subscriber.customFields.sourceLocations
+    : [];
+  const sourceLocations = [
+    subscriber?.sourceLocation,
+    subscriber?.customFields?.audienceSourceLocation,
+    ...customSourceLocations,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  if (!sourceLocations.length) {
+    return formatLabel(subscriber?.source || "manual");
+  }
+
+  const uniqueLocations = Array.from(new Set(sourceLocations));
+
+  return uniqueLocations
+    .map((location) =>
+      location === "main_website"
+        ? "Main website"
+        : location === "vendor_website"
+          ? "Vendor website"
+          : location === "admin"
+            ? "Admin"
+            : location === "manual"
+              ? "Manual"
+              : formatLabel(location),
+    )
+    .join(" • ");
+};
+
 const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
 
 const parseCsvPreview = (content = "") => {
@@ -283,30 +316,6 @@ function AudienceListPage() {
     loadSubscribers(1);
   }, []);
 
-  useEffect(() => {
-    const refreshAudience = () => {
-      loadSubscribers(pagination.page || 1);
-    };
-
-    const handleFocus = () => refreshAudience();
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshAudience();
-      }
-    };
-
-    const intervalId = window.setInterval(refreshAudience, 10000);
-
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [pagination.page]);
-
   const selectedSubscribers = useMemo(
     () =>
       subscribers.filter((subscriber) => selectedIds.includes(subscriber._id)),
@@ -363,6 +372,10 @@ function AudienceListPage() {
     setFilters(nextFilters);
     setSelectedIds([]);
     loadSubscribers(1, nextFilters);
+  };
+
+  const handleRefreshAudience = () => {
+    loadSubscribers(pagination.page || 1);
   };
 
   const toggleSelection = (subscriberId) => {
@@ -536,13 +549,22 @@ function AudienceListPage() {
               Jump to common audience slices without rebuilding the search form.
             </p>
           </div>
-          <button
-            type="button"
-            className="rounded-xl border border-[#ddd4f2] px-4 py-2 text-sm font-medium text-[#5f5878]"
-            onClick={() => applyQuickFilter(initialFilters)}
-          >
-            Clear filters
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-2 text-sm font-medium text-[#5f5878]"
+              onClick={() => applyQuickFilter(initialFilters)}
+            >
+              Clear filters
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-2 text-sm font-medium text-[#5f5878]"
+              onClick={handleRefreshAudience}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {[
@@ -711,7 +733,10 @@ function AudienceListPage() {
                         <StatusBadge status={subscriber.status} />
                       </td>
                       <td className="px-6 py-5 text-[#5f5878]">
-                        <p>{formatLabel(subscriber.source)}</p>
+                        <p>{formatSourceLocation(subscriber)}</p>
+                        <p className="mt-2 text-xs text-[#9a94b2]">
+                          {formatLabel(subscriber.source) || "No source"}
+                        </p>
                         <p className="mt-2 text-xs text-[#9a94b2]">
                           {[
                             subscriber.city,
@@ -853,12 +878,12 @@ function AudienceListPage() {
           <div className="mt-5 space-y-3">
             {summary.bySource.length ? (
               summary.bySource.map((item) => (
-                <div
+                  <div
                   key={item.source}
                   className="flex items-center justify-between rounded-2xl bg-[#faf7ff] p-4"
                 >
                   <p className="text-sm font-medium text-[#2f2b3d]">
-                    {formatLabel(item.source)}
+                    {formatSourceLocation({ sourceLocation: item.source })}
                   </p>
                   <span className="soft-pill">{item.count}</span>
                 </div>

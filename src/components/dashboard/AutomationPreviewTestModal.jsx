@@ -19,6 +19,16 @@ function MobileIcon() {
   );
 }
 
+const parseRecipientEmails = (value = "") =>
+  Array.from(
+    new Set(
+      String(value)
+        .split(/[\n,]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
 const escapeHtml = (value = "") =>
   String(value)
     .replaceAll("&", "&amp;")
@@ -50,7 +60,7 @@ export default function AutomationPreviewTestModal({
 }) {
   const [tab, setTab] = useState("preview");
   const [viewportMode, setViewportMode] = useState("desktop");
-  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientEmails, setRecipientEmails] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -62,7 +72,7 @@ export default function AutomationPreviewTestModal({
 
     setTab("preview");
     setViewportMode("desktop");
-    setRecipientEmail("");
+    setRecipientEmails("");
     setFirstName("");
     setLastName("");
     setIsSending(false);
@@ -77,10 +87,12 @@ export default function AutomationPreviewTestModal({
   const handleRunSample = async () => {
     if (!onRunSample) return;
 
+    const emails = parseRecipientEmails(recipientEmails);
+
     setIsSending(true);
     try {
       await onRunSample({
-        recipientEmail,
+        emails,
         firstName,
         lastName,
       });
@@ -245,14 +257,17 @@ export default function AutomationPreviewTestModal({
             <section className="min-h-0 overflow-auto rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">Recipient email</label>
-                  <input
+                  <label className="mb-2 block text-sm font-semibold text-slate-900">Recipient emails</label>
+                  <textarea
                     className="field"
-                    type="email"
-                    placeholder="recipient@example.com"
-                    value={recipientEmail}
-                    onChange={(event) => setRecipientEmail(event.target.value)}
+                    rows={4}
+                    placeholder="recipient1@example.com, recipient2@example.com"
+                    value={recipientEmails}
+                    onChange={(event) => setRecipientEmails(event.target.value)}
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Paste multiple addresses separated by commas or new lines.
+                  </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>

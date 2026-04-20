@@ -115,20 +115,24 @@ function AutomationListPage() {
     }
   }
 
-  const handleRunSampleExecution = async ({ recipientEmail, firstName, lastName }) => {
+  const handleRunSampleExecution = async ({ emails, firstName, lastName }) => {
     if (!previewWorkflow?._id) {
       toast.error('Workflow preview is not ready')
       return
     }
 
-    if (!recipientEmail?.trim()) {
+    const recipientEmails = Array.isArray(emails)
+      ? emails.map((email) => String(email || '').trim().toLowerCase()).filter(Boolean)
+      : []
+
+    if (!recipientEmails.length) {
       toast.error('Enter a recipient email address')
       return
     }
 
     try {
       await api.post(`/automations/${previewWorkflow._id}/sample-execution`, {
-        recipientEmail,
+        emails: recipientEmails,
         firstName,
         lastName,
       })

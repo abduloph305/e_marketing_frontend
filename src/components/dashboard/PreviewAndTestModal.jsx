@@ -19,9 +19,20 @@ function MobileIcon() {
   );
 }
 
+const parseRecipientEmails = (value = "") =>
+  Array.from(
+    new Set(
+      String(value)
+        .split(/[\n,]+/)
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
 export default function PreviewAndTestModal({
   open,
   title = "Preview & test",
+  initialTab = "preview",
   subject,
   previewText = "",
   previewHtml = "",
@@ -36,29 +47,31 @@ export default function PreviewAndTestModal({
 }) {
   const [tab, setTab] = useState("preview");
   const [viewportMode, setViewportMode] = useState("desktop");
-  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientEmails, setRecipientEmails] = useState("");
   const [testSubject, setTestSubject] = useState(subject || "");
   const [testMessage, setTestMessage] = useState("");
   const [isSendingTest, setIsSendingTest] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setTab("preview");
+      setTab(initialTab);
       setViewportMode("desktop");
-      setRecipientEmail("");
+      setRecipientEmails("");
       setTestSubject(subject || "");
       setTestMessage("");
       setIsSendingTest(false);
     }
-  }, [open, subject]);
+  }, [initialTab, open, subject]);
 
   const handleSendTest = async () => {
     if (!onSendTest) return;
 
+    const emails = parseRecipientEmails(recipientEmails);
+
     setIsSendingTest(true);
     try {
       await onSendTest({
-        email: recipientEmail,
+        emails,
         subject: testSubject,
         message: testMessage,
         html: previewHtml,
@@ -259,14 +272,17 @@ export default function PreviewAndTestModal({
             <section className="min-h-0 overflow-auto rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-900">Recipient email</label>
-                  <input
+                  <label className="mb-2 block text-sm font-semibold text-slate-900">Recipient emails</label>
+                  <textarea
                     className="field"
-                    type="email"
-                    placeholder="recipient@example.com"
-                    value={recipientEmail}
-                    onChange={(event) => setRecipientEmail(event.target.value)}
+                    rows={4}
+                    placeholder="recipient1@example.com, recipient2@example.com"
+                    value={recipientEmails}
+                    onChange={(event) => setRecipientEmails(event.target.value)}
                   />
+                  <p className="mt-2 text-xs text-slate-500">
+                    Paste multiple addresses separated by commas or new lines.
+                  </p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-slate-900">Subject</label>

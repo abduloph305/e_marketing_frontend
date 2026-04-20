@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import LoadingState from "../../components/ui/LoadingState.jsx";
@@ -52,23 +52,23 @@ const formatRecurringRule = (campaign) => {
   return `Every ${quantity} ${suffix}`;
 };
 
-function DeleteIcon() {
+function DotsIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="h-4 w-4 fill-none stroke-current"
-      strokeWidth="1.8"
+      className="h-5 w-5 fill-current"
+      aria-hidden="true"
     >
-      <path d="M4 7h16" />
-      <path d="M10 11v6M14 11v6" />
-      <path d="M6 7l1 12h10l1-12" />
-      <path d="M9 7V4h6v3" />
+      <circle cx="12" cy="5" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="12" cy="19" r="1.7" />
     </svg>
   );
 }
 
 function CampaignsListPage() {
   const toast = useContext(ToastContext);
+  const actionMenuRef = useRef(null);
   const [campaigns, setCampaigns] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -80,6 +80,7 @@ function CampaignsListPage() {
   const [recurringOnly, setRecurringOnly] = useState(false);
   const [broadcastOnly, setBroadcastOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [actionMenuCampaignId, setActionMenuCampaignId] = useState(null);
 
   const loadCampaigns = async (
     page = 1,
@@ -119,6 +120,32 @@ function CampaignsListPage() {
   useEffect(() => {
     loadCampaigns(1);
   }, []);
+
+  useEffect(() => {
+    if (!actionMenuCampaignId) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setActionMenuCampaignId(null);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setActionMenuCampaignId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [actionMenuCampaignId]);
 
   const handleArchive = async (campaignId) => {
     try {
@@ -428,48 +455,86 @@ function CampaignsListPage() {
                         <StatusBadge status={campaign.status} />
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <Link
-                            className="font-medium text-[#2f2b3d]"
-                            to={`/campaigns/${campaign._id}`}
-                          >
-                            View
-                          </Link>
-                          <Link
-                            className="font-medium text-[#6d28d9]"
-                            to={`/campaigns/${campaign._id}/edit`}
-                          >
-                            Edit
-                          </Link>
-                          {["scheduled", "paused"].includes(campaign.status) ? (
-                            <button
-                              type="button"
-                              className="font-medium text-[#c77b08]"
-                              onClick={() => handlePauseResume(campaign)}
-                            >
-                              {campaign.status === "paused"
-                                ? "Resume"
-                                : "Pause"}
-                            </button>
-                          ) : null}
-                          {campaign.status !== "archived" ? (
-                            <button
-                              type="button"
-                              className="font-medium text-[#8b84a5]"
-                              onClick={() => handleArchive(campaign._id)}
-                            >
-                              Archive
-                            </button>
-                          ) : null}
+                        <div
+                          className="relative inline-flex"
+                          ref={actionMenuCampaignId === campaign._id ? actionMenuRef : null}
+                        >
                           <button
                             type="button"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-200 text-rose-600 transition hover:bg-rose-50"
-                            onClick={() => handleDelete(campaign)}
-                            aria-label={`Delete ${campaign.name}`}
-                            title="Delete campaign"
+                            onClick={() =>
+                              setActionMenuCampaignId((current) =>
+                                current === campaign._id ? null : campaign._id,
+                              )
+                            }
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
+                            aria-label={`Actions for ${campaign.name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={actionMenuCampaignId === campaign._id}
+                            title="More actions"
                           >
-                            <DeleteIcon />
+                            <DotsIcon />
                           </button>
+
+                          {actionMenuCampaignId === campaign._id ? (
+                            <div
+                              role="menu"
+                              className="absolute right-0 top-12 z-20 w-48 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_16px_40px_rgba(15,23,42,0.14)]"
+                            >
+                              <Link
+                                role="menuitem"
+                                className="block rounded-xl px-3 py-2 text-sm font-medium text-[#2f2b3d] hover:bg-slate-50"
+                                to={`/campaigns/${campaign._id}`}
+                                onClick={() => setActionMenuCampaignId(null)}
+                              >
+                                View
+                              </Link>
+                              <Link
+                                role="menuitem"
+                                className="block rounded-xl px-3 py-2 text-sm font-medium text-[#6d28d9] hover:bg-slate-50"
+                                to={`/campaigns/${campaign._id}/edit`}
+                                onClick={() => setActionMenuCampaignId(null)}
+                              >
+                                Edit
+                              </Link>
+                              {["scheduled", "paused"].includes(campaign.status) ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="block w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-[#c77b08] hover:bg-slate-50"
+                                  onClick={() => {
+                                    setActionMenuCampaignId(null);
+                                    handlePauseResume(campaign);
+                                  }}
+                                >
+                                  {campaign.status === "paused" ? "Resume" : "Pause"}
+                                </button>
+                              ) : null}
+                              {campaign.status !== "archived" ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="block w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-[#8b84a5] hover:bg-slate-50"
+                                  onClick={() => {
+                                    setActionMenuCampaignId(null);
+                                    handleArchive(campaign._id);
+                                  }}
+                                >
+                                  Archive
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="block w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+                                onClick={() => {
+                                  setActionMenuCampaignId(null);
+                                  handleDelete(campaign);
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
