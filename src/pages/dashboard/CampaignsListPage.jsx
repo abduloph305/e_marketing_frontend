@@ -13,14 +13,46 @@ import {
 import { api } from "../../lib/api.js";
 
 const statusTabs = [
-  "all",
-  "draft",
-  "scheduled",
-  "sending",
-  "sent",
-  "paused",
-  "failed",
-  "archived",
+  {
+    value: "all",
+    label: "All campaigns",
+    help: "See every campaign in one place, regardless of status or type.",
+  },
+  {
+    value: "draft",
+    label: "Draft",
+    help: "Campaigns being written or reviewed before they are scheduled.",
+  },
+  {
+    value: "scheduled",
+    label: "Scheduled",
+    help: "Campaigns planned for a future date and waiting to be sent.",
+  },
+  {
+    value: "sending",
+    label: "Sending",
+    help: "Campaigns that are actively being delivered right now.",
+  },
+  {
+    value: "sent",
+    label: "Sent",
+    help: "Campaigns that have already gone out to recipients.",
+  },
+  {
+    value: "paused",
+    label: "Paused",
+    help: "Campaigns temporarily stopped before they finish sending.",
+  },
+  {
+    value: "failed",
+    label: "Failed",
+    help: "Campaigns that ran into an error and need attention.",
+  },
+  {
+    value: "archived",
+    label: "Archived",
+    help: "Older campaigns kept for reference without using them again.",
+  },
 ];
 
 const initialFilters = {
@@ -236,27 +268,32 @@ function CampaignsListPage() {
       <section className="shell-card-strong p-5 md:p-6">
         <div className="flex flex-wrap gap-2">
           {statusTabs.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => {
+            <div key={tab.value} className="group relative">
+              <button
+                type="button"
+                onClick={() => {
                 setRecurringOnly(false);
                 setBroadcastOnly(false);
-                setStatusTab(tab);
-                loadCampaigns(1, tab, filters, false);
+                setStatusTab(tab.value);
+                loadCampaigns(1, tab.value, filters, false);
               }}
-              className={`rounded-[3px] border px-4 py-2 text-sm font-semibold capitalize transition ${
-                !recurringOnly && statusTab === tab
-                  ? "border-[#7c3aed] bg-[#7c3aed] text-white"
-                  : "border-[#ddd4f2] bg-white text-[#6e6787]"
-              }`}
-            >
-              {tab === "all" ? "All campaigns" : tab}
-            </button>
+                className={`rounded-[3px] border px-4 py-2 text-sm font-semibold capitalize transition ${
+                  !recurringOnly && statusTab === tab.value
+                    ? "border-[#7c3aed] bg-[#7c3aed] text-white"
+                    : "border-[#ddd4f2] bg-white text-[#6e6787]"
+                }`}
+              >
+                {tab.label}
+              </button>
+              <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-[#e7def8] bg-white px-4 py-3 text-xs leading-5 text-[#5f5878] opacity-0 shadow-[0_12px_32px_rgba(15,23,42,0.12)] transition group-hover:opacity-100">
+                {tab.help}
+              </div>
+            </div>
           ))}
-          <button
-            type="button"
-            onClick={() => {
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => {
               const nextRecurringOnly = !recurringOnly;
               setRecurringOnly(nextRecurringOnly);
               if (nextRecurringOnly) {
@@ -273,17 +310,22 @@ function CampaignsListPage() {
                 false,
               );
             }}
-            className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
-              recurringOnly
-                ? "border-[#7c3aed] bg-[#7c3aed] text-white"
-                : "border-[#ddd4f2] bg-white text-[#6e6787]"
-            }`}
-          >
-            Recurring campaigns
-          </button>
-          <button
-            type="button"
-            onClick={() => {
+              className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
+                recurringOnly
+                  ? "border-[#7c3aed] bg-[#7c3aed] text-white"
+                  : "border-[#ddd4f2] bg-white text-[#6e6787]"
+              }`}
+            >
+              Recurring campaigns
+            </button>
+            <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-[#e7def8] bg-white px-4 py-3 text-xs leading-5 text-[#5f5878] opacity-0 shadow-[0_12px_32px_rgba(15,23,42,0.12)] transition group-hover:opacity-100">
+              Show campaigns that repeat automatically on a schedule.
+            </div>
+          </div>
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => {
               const nextBroadcastOnly = !broadcastOnly;
               setBroadcastOnly(nextBroadcastOnly);
               setRecurringOnly(false);
@@ -298,14 +340,18 @@ function CampaignsListPage() {
                 nextBroadcastOnly,
               );
             }}
-            className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
-              broadcastOnly
-                ? "border-[#7c3aed] bg-[#7c3aed] text-white"
-                : "border-[#ddd4f2] bg-white text-[#6e6787]"
-            }`}
-          >
-            Broadcast campaigns
-          </button>
+              className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
+                broadcastOnly
+                  ? "border-[#7c3aed] bg-[#7c3aed] text-white"
+                  : "border-[#ddd4f2] bg-white text-[#6e6787]"
+              }`}
+            >
+              Broadcast campaigns
+            </button>
+            <div className="pointer-events-none absolute left-0 top-full z-20 mt-2 w-64 rounded-2xl border border-[#e7def8] bg-white px-4 py-3 text-xs leading-5 text-[#5f5878] opacity-0 shadow-[0_12px_32px_rgba(15,23,42,0.12)] transition group-hover:opacity-100">
+              Show one-time campaigns that are not recurring.
+            </div>
+          </div>
         </div>
 
         <form

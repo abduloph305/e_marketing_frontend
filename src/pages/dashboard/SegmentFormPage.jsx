@@ -1,22 +1,114 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
-import { operatorOptions, segmentFieldOptions } from "../../data/audience.js";
-import { getSegmentPreset } from "../../data/segmentPresets.js";
+import {
+  createBlankCondition,
+  getFieldGroup,
+  getFieldOption,
+  getPresetById,
+  segmentFieldGroups,
+  segmentMatchModes,
+  segmentQuickPresets,
+} from "../../data/segmentBuilder.js";
 import { api } from "../../lib/api.js";
 
-const createRule = () => ({
-  field: "status",
-  operator: "eq",
-  value: "",
-});
+const getKindValue = (kind) => {
+  if (kind === "boolean") {
+    return "true";
+  }
 
-const needsValue = (field) =>
-  !["cartAbandoners", "firstTimeBuyers", "openedButDidNotClick"].includes(
-    field,
-  );
+  if (kind === "number") {
+    return "0";
+  }
+
+  if (kind === "date") {
+    return "7";
+  }
+
+  return "";
+};
+
+const createConditionFromField = (fieldValue, fallbackCategory = "activity") => {
+  const field = getFieldOption(fieldValue);
+  const group = segmentFieldGroups.find((item) =>
+    item.fields.some((entry) => entry.value === fieldValue),
+  ) || getFieldGroup(fallbackCategory);
+  const nextField = field || group.fields[0];
+
+  return {
+    category: group.id,
+    field: nextField.value,
+    operator: nextField.operators[0] || "is",
+    value: getKindValue(nextField.kind),
+  };
+};
+
+const buildConditionSummary = (condition) => {
+  const field = getFieldOption(condition.field);
+  const fieldLabel = field?.label || condition.field;
+  const operatorLabelMap = {
+    is: "is",
+    is_not: "is not",
+    more_than: "more than",
+    less_than: "less than",
+    in_last_days: "in last",
+    before_days: "inactive for",
+    all: "has all",
+  };
+
+  const operatorLabel = operatorLabelMap[condition.operator] || condition.operator;
+  const value = String(condition.value || "").trim();
+
+  if (!value && field?.kind !== "boolean") {
+    return fieldLabel;
+  }
+
+  if (condition.operator === "in_last_days" || condition.operator === "before_days") {
+    return `${fieldLabel} ${operatorLabel} ${value} days`;
+  }
+
+  if (field?.kind === "boolean") {
+    return `${fieldLabel} ${operatorLabel} ${value === "false" ? "No" : "Yes"}`;
+  }
+
+  return `${fieldLabel} ${operatorLabel} ${value}`;
+};
+
+const sanitizeConditions = (conditions = []) =>
+  conditions
+    .map((condition) => {
+      const field = getFieldOption(condition.field);
+
+      if (!field) {
+        return null;
+      }
+
+      const normalizedValue = String(condition.value ?? "").trim();
+      const requiresValue = field.kind !== "boolean" || condition.operator === "is_not" || condition.operator === "is";
+
+      if (field.kind === "boolean") {
+        return {
+          category: condition.category || "activity",
+          field: condition.field,
+          operator: condition.operator || "is",
+          value: normalizedValue || "true",
+        };
+      }
+
+      if (requiresValue && !normalizedValue) {
+        return null;
+      }
+
+      return {
+        category: condition.category || "activity",
+        field: condition.field,
+        operator: condition.operator || "is",
+        value: normalizedValue,
+      };
+    })
+    .filter(Boolean);
 
 function SegmentFormPage() {
   const { id } = useParams();
@@ -24,22 +116,107 @@ function SegmentFormPage() {
   const navigate = useNavigate();
   const toast = useContext(ToastContext);
   const presetId = new URLSearchParams(location.search).get("preset");
-  const preset = !id ? getSegmentPreset(presetId) : null;
-  const initialRules = preset?.rules?.length
-    ? preset.rules.map((rule) => ({ ...rule }))
-    : [createRule()];
+  const mode = new URLSearchParams(location.search).get("mode");
+  const preset = !id ? getPresetById(presetId) : null;
+  const isPresetPickerMode = mode === "ready-made" && !preset;
+
+  const initialDefinition = preset?.definition || {
+    logic: "and",
+    filters: [createBlankCondition()],
+  };
+
   const [name, setName] = useState(() => preset?.name || "");
-  const [description, setDescription] = useState(
-    () => preset?.description || "",
-  );
-  const [rules, setRules] = useState(() =>
-    initialRules.map((rule) => ({ ...rule })),
+  const [logic, setLogic] = useState(() => initialDefinition.logic || "and");
+  const [conditions, setConditions] = useState(() =>
+    (initialDefinition.filters?.length ? initialDefinition.filters : [createBlankCondition()]).map(
+      (condition) => ({
+        category: condition.category || "activity",
+        field: condition.field || "lastActivityAt",
+        operator: condition.operator || "in_last_days",
+        value: String(condition.value ?? ""),
+      }),
+    ),
   );
   const [previewCount, setPreviewCount] = useState(0);
-  const [previewSubscribers, setPreviewSubscribers] = useState([]);
+  const [sampleUsers, setSampleUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(Boolean(id));
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+
+  if (isPresetPickerMode) {
+    return (
+      <div className="space-y-6">
+        <section className="shell-card-strong p-6 md:p-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <PageHeader
+              eyebrow="Segments"
+              title="Choose a ready-made segment"
+              description="Pick a preset first, then edit it in the segment builder."
+            />
+            <Link
+              to="/segments"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Back to segments
+            </Link>
+          </div>
+        </section>
+
+        <section className="shell-card-strong p-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+                Ready-made segments
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-[#2f2b3d]">
+                Select one to edit
+              </h3>
+            </div>
+            <Link
+              to="/segments/new?mode=create"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Create from scratch instead
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {segmentQuickPresets.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-[28px] border border-[#e7def8] bg-gradient-to-br from-white to-[#faf7ff] p-5"
+              >
+                <h4 className="text-lg font-semibold text-[#2f2b3d]">
+                  {item.name}
+                </h4>
+                <p className="mt-2 text-sm text-[#6e6787]">
+                  {item.description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {item.definition.filters.map((filter) => (
+                    <span
+                      key={`${item.id}-${filter.field}`}
+                      className="soft-pill"
+                    >
+                      {getFieldOption(filter.field)?.label || filter.field}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-5">
+                  <Link
+                    to={`/segments/new?mode=ready-made&preset=${item.id}`}
+                    className="primary-button w-full"
+                  >
+                    Edit preset
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (!id) {
@@ -49,66 +226,125 @@ function SegmentFormPage() {
     const loadSegment = async () => {
       try {
         const { data } = await api.get(`/segments/${id}`);
-        setName(data.name);
-        setDescription(data.description || "");
-        const nextRules = data.rules.length ? data.rules : [createRule()];
-        setRules(nextRules);
-        setPreviewCount(data.previewCount || 0);
-        await refreshPreview(nextRules);
+        const nextDefinition = data.definition || { logic: "and", filters: data.rules || [] };
+
+        setName(data.name || "");
+        setLogic(nextDefinition.logic || "and");
+        setConditions(
+          (nextDefinition.filters?.length ? nextDefinition.filters : [createBlankCondition()]).map(
+            (condition) => ({
+              category: condition.category || "activity",
+              field: condition.field || "lastActivityAt",
+              operator: condition.operator || "in_last_days",
+              value: String(condition.value ?? ""),
+            }),
+          ),
+        );
+      } catch (requestError) {
+        toast.error(
+          requestError.response?.data?.message || "Unable to load segment",
+        );
+        navigate("/segments");
       } finally {
         setIsLoading(false);
       }
     };
 
     loadSegment();
-  }, [id]);
+  }, [id, navigate, toast]);
 
-  const cleanedRules = (nextRules = rules) =>
-    nextRules.filter(
-      (rule) =>
-        rule.field &&
-        rule.operator &&
-        (!needsValue(rule.field) || String(rule.value).trim()),
-    );
+  const cleanConditions = useMemo(() => sanitizeConditions(conditions), [conditions]);
 
-  const refreshPreview = async (nextRules = rules) => {
+  const refreshPreview = async (nextLogic = logic, nextConditions = cleanConditions) => {
     try {
       const { data } = await api.post("/segments/preview", {
-        rules: cleanedRules(nextRules),
+        definition: {
+          logic: nextLogic,
+          filters: nextConditions,
+        },
       });
-      setPreviewCount(data.previewCount);
-      setPreviewSubscribers(data.sampleSubscribers || []);
-    } catch (_error) {
+
+      setPreviewCount(Number(data.previewCount || 0));
+      setSampleUsers(data.sampleSubscribers || []);
+    } catch {
       setPreviewCount(0);
-      setPreviewSubscribers([]);
+      setSampleUsers([]);
     }
   };
 
   useEffect(() => {
-    if (!id) {
-      refreshPreview(initialRules);
+    if (isLoading) {
+      return;
     }
-  }, []);
 
-  const handleRuleChange = (index, key, value) => {
-    const nextRules = rules.map((rule, ruleIndex) => {
-      if (ruleIndex !== index) {
-        return rule;
+    const timer = setTimeout(() => {
+      refreshPreview();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [cleanConditions, isLoading, logic]);
+
+  const handleConditionChange = (index, key, value) => {
+    setConditions((current) =>
+      current.map((condition, conditionIndex) => {
+        if (conditionIndex !== index) {
+          return condition;
+        }
+
+        if (key === "category") {
+          const nextGroup = getFieldGroup(value);
+          const nextField = nextGroup.fields[0];
+
+          return {
+            category: value,
+            field: nextField.value,
+            operator: nextField.operators[0] || "is",
+            value: getKindValue(nextField.kind),
+          };
+        }
+
+        if (key === "field") {
+          return createConditionFromField(value, condition.category);
+        }
+
+        if (key === "operator") {
+          const field = getFieldOption(condition.field);
+          return {
+            ...condition,
+            operator: value,
+            value:
+              field?.kind === "boolean"
+                ? value === "is_not"
+                  ? "false"
+                  : "true"
+                : field?.kind === "date"
+                  ? condition.value || "7"
+                  : field?.kind === "number"
+                    ? condition.value || "0"
+                    : condition.value,
+          };
+        }
+
+        return { ...condition, [key]: value };
+      }),
+    );
+  };
+
+  const addCondition = () => {
+    setConditions((current) => [
+      ...current,
+      createBlankCondition(current[current.length - 1]?.category || "activity"),
+    ]);
+  };
+
+  const removeCondition = (index) => {
+    setConditions((current) => {
+      if (current.length === 1) {
+        return [createBlankCondition()];
       }
 
-      if (key === "field") {
-        const fallbackOperator = operatorOptions[value]?.[0]?.value || "eq";
-        return {
-          field: value,
-          operator: fallbackOperator,
-          value: needsValue(value) ? "" : "true",
-        };
-      }
-
-      return { ...rule, [key]: value };
+      return current.filter((_, conditionIndex) => conditionIndex !== index);
     });
-
-    setRules(nextRules);
   };
 
   const handleSubmit = async (event) => {
@@ -120,12 +356,19 @@ function SegmentFormPage() {
       return;
     }
 
-    setIsSubmitting(true);
+    if (!cleanConditions.length) {
+      setError("Add at least one condition");
+      return;
+    }
+
+    setIsSaving(true);
 
     const payload = {
-      name,
-      description,
-      rules: cleanedRules(),
+      name: name.trim(),
+      definition: {
+        logic,
+        filters: cleanConditions,
+      },
     };
 
     try {
@@ -143,142 +386,250 @@ function SegmentFormPage() {
         requestError.response?.data?.message || "Unable to save segment",
       );
     } finally {
-      setIsSubmitting(false);
+      setIsSaving(false);
     }
   };
 
   if (isLoading) {
-    return <LoadingState message="Loading segment..." />;
+    return <LoadingState message="Loading segment builder..." />;
   }
 
   return (
     <div className="space-y-6">
       <section className="shell-card-strong p-6 md:p-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <PageHeader
             eyebrow="Segments"
-            title={
-              id
-                ? "Edit segment"
-                : preset
-                  ? "Create segment from preset"
-                  : "Create CRM segment"
-            }
-            description={
-              preset
-                ? preset.description
-                : "Build stronger audience logic with lifecycle, value, engagement, location, and placeholder commerce rules."
-            }
+            title={id ? "Edit segment" : "Create a segment"}
+            description="Pick a name, add simple conditions, and see the audience count update as you build."
           />
-          <Link
-            to="/segments"
-            className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-          >
-            Back to segments
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to="/segments"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Back to segments
+            </Link>
+            <button
+              type="submit"
+              form="segment-builder-form"
+              className="primary-button"
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving..." : "Save segment"}
+            </button>
+          </div>
         </div>
       </section>
 
-      <form
-        className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]"
-        onSubmit={handleSubmit}
-      >
-        <section className="shell-card-strong space-y-6 p-6">
-          <input
-            className="field"
-            placeholder="Segment name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-          />
-          <textarea
-            className="field min-h-[110px] resize-y"
-            placeholder="Short description for the team"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-
-          <div className="space-y-4">
-            {rules.map((rule, index) => (
-              <div
-                key={index}
-                className="grid gap-3 md:grid-cols-[1fr_1fr_1.15fr_auto]"
-              >
-                <select
-                  className="field"
-                  value={rule.field}
-                  onChange={(event) =>
-                    handleRuleChange(index, "field", event.target.value)
-                  }
-                >
-                  {segmentFieldOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  className="field"
-                  value={rule.operator}
-                  onChange={(event) =>
-                    handleRuleChange(index, "operator", event.target.value)
-                  }
-                >
-                  {(operatorOptions[rule.field] || []).map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-
-                {needsValue(rule.field) ? (
-                  <input
-                    className="field"
-                    placeholder="Value"
-                    value={rule.value}
-                    onChange={(event) =>
-                      handleRuleChange(index, "value", event.target.value)
-                    }
-                  />
-                ) : (
-                  <div className="field flex items-center text-sm text-[#8b84a5]">
-                    Rule uses built-in logic
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-                  onClick={() =>
-                    setRules((current) =>
-                      current.filter((_, ruleIndex) => ruleIndex !== index),
-                    )
-                  }
-                  disabled={rules.length === 1}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <form
+          id="segment-builder-form"
+          className="shell-card-strong space-y-6 p-6"
+          onSubmit={handleSubmit}
+        >
+          <div className="space-y-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+                Step 1
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-[#2f2b3d]">
+                Name your segment
+              </h2>
+            </div>
+            <input
+              className="field"
+              placeholder="e.g. High value buyers"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+                Step 2
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-[#2f2b3d]">
+                Add conditions
+              </h2>
+              <p className="mt-2 text-sm text-[#6e6787]">
+                Choose a category, pick a rule, and keep it simple.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {segmentMatchModes.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  onClick={() => setLogic(mode.value)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    logic === mode.value
+                      ? "border-[#2f2b3d] bg-[#2f2b3d] text-white"
+                      : "border-[#ddd4f2] bg-white text-[#5f5878]"
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              {conditions.map((condition, index) => {
+                const group = getFieldGroup(condition.category);
+                const field = getFieldOption(condition.field);
+                const fieldOptions = group.fields;
+                const valueKind = field?.kind || "text";
+
+                return (
+                  <article
+                    key={`${condition.category}-${condition.field}-${index}`}
+                    className="rounded-[28px] border border-[#e7def8] bg-[#faf7ff] p-4 shadow-[0_10px_24px_rgba(43,29,75,0.04)]"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8b84a5]">
+                          Condition {index + 1}
+                        </p>
+                        <p className="mt-1 text-sm text-[#6e6787]">
+                          {buildConditionSummary(condition)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeCondition(index)}
+                        className="rounded-xl border border-[#ddd4f2] px-3 py-2 text-sm font-medium text-[#5f5878]"
+                      >
+                        X
+                      </button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_0.95fr]">
+                      <select
+                        className="field"
+                        value={condition.category}
+                        onChange={(event) =>
+                          handleConditionChange(index, "category", event.target.value)
+                        }
+                      >
+                        {segmentFieldGroups.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="field"
+                        value={condition.field}
+                        onChange={(event) =>
+                          handleConditionChange(index, "field", event.target.value)
+                        }
+                      >
+                        {fieldOptions.map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="field"
+                        value={condition.operator}
+                        onChange={(event) =>
+                          handleConditionChange(index, "operator", event.target.value)
+                        }
+                      >
+                        {field?.operators?.map((item) => (
+                          <option key={item} value={item}>
+                            {item === "is"
+                              ? "is"
+                              : item === "is_not"
+                                ? "is not"
+                                : item === "more_than"
+                                  ? "more than"
+                                  : item === "less_than"
+                                    ? "less than"
+                                    : item === "in_last_days"
+                                      ? "in last X days"
+                                      : item === "before_days"
+                                        ? "inactive for X days"
+                                        : "has all tags"}
+                          </option>
+                        ))}
+                      </select>
+
+                      <div>
+                        {valueKind === "boolean" ? (
+                          <select
+                            className="field"
+                            value={condition.value || "true"}
+                            onChange={(event) =>
+                              handleConditionChange(index, "value", event.target.value)
+                            }
+                          >
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        ) : (
+                          <input
+                            className="field"
+                            type={valueKind === "number" || valueKind === "date" ? "number" : "text"}
+                            min={valueKind === "number" || valueKind === "date" ? "0" : undefined}
+                            placeholder={
+                              valueKind === "number"
+                                ? "0"
+                                : valueKind === "date"
+                                  ? "7"
+                                  : "Enter value"
+                            }
+                            value={condition.value}
+                            onChange={(event) =>
+                              handleConditionChange(index, "value", event.target.value)
+                            }
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
             <button
               type="button"
-              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-              onClick={() => setRules((current) => [...current, createRule()])}
+              onClick={addCondition}
+              className="rounded-2xl border border-[#ddd4f2] px-5 py-3 text-sm font-semibold text-[#5f5878]"
             >
-              Add rule
+              + Add condition
             </button>
-            <div className="flex items-center gap-3">
-              <span className="soft-pill">Preview count: {previewCount}</span>
-              <button
-                type="button"
-                className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-                onClick={() => refreshPreview()}
-              >
-                Refresh preview
-              </button>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+              Selected filters
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {cleanConditions.length ? (
+                cleanConditions.map((condition, index) => (
+                  <span
+                    key={`${condition.field}-${index}`}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#ddd4f2] bg-white px-3 py-2 text-sm font-medium text-[#5f5878]"
+                  >
+                    {buildConditionSummary(condition)}
+                    <button
+                      type="button"
+                      className="text-[#8b84a5]"
+                      onClick={() => removeCondition(index)}
+                    >
+                      X
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span className="soft-pill">No filters added yet</span>
+              )}
             </div>
           </div>
 
@@ -287,143 +638,84 @@ function SegmentFormPage() {
               {error}
             </div>
           ) : null}
+        </form>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              className="primary-button"
-              disabled={isSubmitting}
-            >
-              {isSubmitting
-                ? "Saving..."
-                : id
-                  ? "Update segment"
-                  : "Create segment"}
-            </button>
-          </div>
-        </section>
-
-        <section className="space-y-6">
+        <aside className="space-y-6">
           {preset ? (
             <article className="shell-card-strong p-6">
-              <h3 className="text-xl font-semibold text-[#2f2b3d]">
-                Preset loaded
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+                Ready-made segment loaded
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-[#2f2b3d]">
+                {preset.name}
               </h3>
               <p className="mt-2 text-sm text-[#6e6787]">
-                Starting with{" "}
-                <span className="font-medium text-[#2f2b3d]">
-                  {preset.name}
-                </span>
-                . Refine the rules before saving.
+                Make your changes here and save when ready.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {preset.rules.map((rule) => (
+                {preset.definition.filters.map((filter) => (
                   <span
-                    key={`${preset.id}-${rule.field}`}
+                    key={`${preset.id}-${filter.field}`}
                     className="soft-pill"
                   >
-                    {rule.field} {rule.operator} {rule.value}
+                    {getFieldOption(filter.field)?.label || filter.field}
                   </span>
                 ))}
+              </div>
+              <div className="mt-5">
+                <Link
+                  to="/segments/new?mode=ready-made"
+                  className="rounded-2xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+                >
+                  Change preset
+                </Link>
               </div>
             </article>
           ) : null}
 
           <article className="shell-card-strong p-6">
-            <h3 className="text-xl font-semibold text-[#2f2b3d]">
-              Suggested segment plays
-            </h3>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                "Repeat buyers",
-                "Inactive users",
-                "High value customers",
-                "Opened but did not click",
-                "Cart abandoners placeholder",
-              ].map((item) => (
-                <span key={item} className="soft-pill">
-                  {item}
-                </span>
-              ))}
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+              Step 3
+            </p>
+            <div className="mt-3 flex items-end justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-semibold text-[#2f2b3d]">
+                  {previewCount} users match this segment
+                </h3>
+                <p className="mt-2 text-sm text-[#6e6787]">
+                  This updates automatically as you change the rules.
+                </p>
+              </div>
+              <span className="soft-pill">{cleanConditions.length} filters</span>
             </div>
           </article>
 
           <article className="shell-card-strong p-6">
-            <h3 className="text-xl font-semibold text-[#2f2b3d]">
-              Builder guidance
-            </h3>
-            <div className="mt-4 space-y-3 text-sm text-[#6e6787]">
-              <p>
-                Use lifecycle and value rules first, then layer geography or
-                tags for more precise targeting.
-              </p>
-              <p>
-                Commerce-dependent rules are placeholder-ready and can map to
-                live store logic later without redesigning the builder.
-              </p>
-              <p>
-                Preview counts help validate the audience size before campaigns
-                rely on the saved segment.
-              </p>
-            </div>
-          </article>
-
-          <article className="shell-card-strong p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-xl font-semibold text-[#2f2b3d]">
-                Matched subscribers
-              </h3>
-              <span className="soft-pill">{previewCount} matches</span>
-            </div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+              Preview sample
+            </p>
             <div className="mt-4 space-y-3">
-              {previewSubscribers.length ? (
-                previewSubscribers.map((subscriber) => (
+              {sampleUsers.length ? (
+                sampleUsers.map((user) => (
                   <div
-                    key={subscriber.email}
+                    key={user.email}
                     className="rounded-2xl bg-[#faf7ff] p-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-[#2f2b3d]">
-                          {subscriber.firstName} {subscriber.lastName}
-                        </p>
-                        <p className="mt-1 text-sm text-[#6e6787]">
-                          {subscriber.email}
-                        </p>
-                      </div>
-                      <span className="soft-pill">{subscriber.status}</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="soft-pill">
-                        Score {subscriber.engagementScore || 0}
-                      </span>
-                      <span className="soft-pill">
-                        {subscriber.totalOrders || 0} orders
-                      </span>
-                      <span className="soft-pill">
-                        ${Number(subscriber.totalSpent || 0).toFixed(2)} spent
-                      </span>
-                    </div>
+                    <p className="font-semibold text-[#2f2b3d]">
+                      {user.firstName} {user.lastName}
+                    </p>
+                    <p className="mt-1 text-sm text-[#6e6787]">{user.email}</p>
                   </div>
                 ))
               ) : (
                 <p className="text-sm text-[#6e6787]">
-                  Refresh preview to load a small sample of matched subscribers.
+                  Matching users will appear here after you build a segment.
                 </p>
               )}
             </div>
-            <div className="mt-4">
-              <button
-                type="button"
-                className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-                onClick={() => refreshPreview()}
-              >
-                Refresh preview
-              </button>
-            </div>
           </article>
-        </section>
-      </form>
+        </aside>
+      </section>
     </div>
   );
 }

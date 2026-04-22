@@ -2,6 +2,7 @@ export const subscriberStatuses = [
   'subscribed',
   'unsubscribed',
   'bounced',
+  'blocked',
   'complained',
   'suppressed',
 ]

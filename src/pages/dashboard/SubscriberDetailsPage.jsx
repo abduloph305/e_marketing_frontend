@@ -13,6 +13,24 @@ const formatLabel = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const getEngagementTier = (score = 0) => {
+  const value = Number(score || 0);
+
+  if (value >= 80) {
+    return { label: "Highly active", tone: "bg-emerald-100 text-emerald-700" };
+  }
+
+  if (value >= 55) {
+    return { label: "Active", tone: "bg-sky-100 text-sky-700" };
+  }
+
+  if (value >= 30) {
+    return { label: "At risk", tone: "bg-amber-100 text-amber-700" };
+  }
+
+  return { label: "Inactive", tone: "bg-rose-100 text-rose-700" };
+};
+
 function SubscriberDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -75,6 +93,26 @@ function SubscriberDetailsPage() {
       toast.error(
         error.response?.data?.message || "Unable to suppress subscriber",
       );
+    }
+  };
+
+  const handleBlock = async () => {
+    try {
+      await api.post(`/email/subscribers/${id}/block`);
+      toast.success("Subscriber blocked");
+      loadSubscriber();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to block subscriber");
+    }
+  };
+
+  const handleUnblock = async () => {
+    try {
+      await api.post(`/email/subscribers/${id}/unblock`);
+      toast.success("Subscriber unblocked");
+      loadSubscriber();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to unblock subscriber");
     }
   };
 
@@ -162,6 +200,7 @@ function SubscriberDetailsPage() {
         : "Never",
     ],
   ];
+  const engagementTier = getEngagementTier(subscriber.engagementScore || 0);
 
   return (
     <div className="space-y-6">
@@ -170,6 +209,13 @@ function SubscriberDetailsPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge status={subscriber.status} />
+              {subscriber.status === "blocked" ? (
+                <span className="soft-pill">
+                  {subscriber.blockedReason === "spam"
+                    ? "Spam blocked"
+                    : "Manually blocked"}
+                </span>
+              ) : null}
               {subscriber.suppressionStatus?.isSuppressed ? (
                 <span className="soft-pill">
                   Suppressed: {subscriber.suppressionStatus.reason}
@@ -189,24 +235,46 @@ function SubscriberDetailsPage() {
             >
               Edit
             </Link>
-            {subscriber.status === "subscribed" ? (
+            {subscriber.status === "blocked" ? (
               <button
                 type="button"
-                onClick={handleUnsubscribe}
-                className="rounded-xl border border-amber-200 px-4 py-3 text-sm font-medium text-amber-700"
+                onClick={
+                  subscriber.blockedReason === "spam" ? undefined : handleUnblock
+                }
+                disabled={subscriber.blockedReason === "spam"}
+                className="rounded-xl border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Unsubscribe
+                {subscriber.blockedReason === "spam" ? "Spam blocked" : "Unblock"}
               </button>
-            ) : null}
-            {subscriber.status !== "suppressed" ? (
-              <button
-                type="button"
-                onClick={handleSuppress}
-                className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600"
-              >
-                Suppress
-              </button>
-            ) : null}
+            ) : (
+              <>
+                {subscriber.status === "subscribed" ? (
+                  <button
+                    type="button"
+                    onClick={handleUnsubscribe}
+                    className="rounded-xl border border-amber-200 px-4 py-3 text-sm font-medium text-amber-700"
+                  >
+                    Unsubscribe
+                  </button>
+                ) : null}
+                {subscriber.status !== "suppressed" ? (
+                  <button
+                    type="button"
+                    onClick={handleSuppress}
+                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-600"
+                  >
+                    Suppress
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleBlock}
+                  className="rounded-xl border border-rose-200 px-4 py-3 text-sm font-medium text-rose-700"
+                >
+                  Block
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={handleDelete}
@@ -238,6 +306,7 @@ function SubscriberDetailsPage() {
               className="field"
               value={editStatus}
               onChange={(event) => setEditStatus(event.target.value)}
+              disabled={subscriber.status === "blocked" && subscriber.blockedReason === "spam"}
             >
               {subscriberStatuses.map((status) => (
                 <option key={status} value={status}>
@@ -245,6 +314,11 @@ function SubscriberDetailsPage() {
                 </option>
               ))}
             </select>
+            {subscriber.status === "blocked" && subscriber.blockedReason === "spam" ? (
+              <p className="text-xs text-[#9a94b2]">
+                Spam-blocked contacts are locked and cannot be manually unblocked here.
+              </p>
+            ) : null}
           </label>
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-[#2f2b3d]">Tags</span>
@@ -304,6 +378,14 @@ function SubscriberDetailsPage() {
           <h3 className="text-xl font-semibold text-[#2f2b3d]">
             Engagement summary
           </h3>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${engagementTier.tone}`}>
+              {engagementTier.label}
+            </span>
+            <span className="soft-pill">
+              Score is based on opens, clicks, orders, spend, and recency.
+            </span>
+          </div>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             {engagementFields.map(([label, value]) => (
               <div key={label} className="rounded-2xl bg-[#faf7ff] p-4">
@@ -430,6 +512,9 @@ function SubscriberDetailsPage() {
                 ? `${subscriber.suppressionStatus.reason} via ${subscriber.suppressionStatus.source}`
                 : "Active"}
             </p>
+            {subscriber.status === "blocked" ? (
+              <p>Blocked reason: {subscriber.blockedReason || "manual"}</p>
+            ) : null}
             <Link
               to="/audience"
               className="inline-flex font-semibold text-[#2f2b3d]"

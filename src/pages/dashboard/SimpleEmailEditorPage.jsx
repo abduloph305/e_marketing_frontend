@@ -1,4 +1,5 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import PreviewAndTestModal from "../../components/dashboard/PreviewAndTestModal.jsx";
 import LoadingState from "../../components/ui/LoadingState.jsx";
@@ -108,19 +109,243 @@ const execCommand = (command, value = null) => {
   document.execCommand(command, false, value);
 };
 
-const ToolbarButton = ({ active, children, title, onClick }) => (
-  <button
-    type="button"
-    title={title}
-    onMouseDown={(event) => event.preventDefault()}
-    onClick={onClick}
-    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition ${
-      active ? "border-[#1f5eff] bg-[#eaf0ff] text-[#1231a2]" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-    }`}
+const getCurrentBlockFormat = () =>
+  String(document.queryCommandValue?.("formatBlock") || "")
+    .replace(/[<>]/g, "")
+    .trim()
+    .toLowerCase();
+
+const Icon = ({ children, className = "" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
   >
     {children}
-  </button>
+  </svg>
 );
+
+const IconSource = () => (
+  <Icon className="h-4 w-4">
+    <path d="M8 8l-4 4 4 4" />
+    <path d="M16 8l4 4-4 4" />
+  </Icon>
+);
+
+const IconLink = () => (
+  <Icon className="h-4 w-4">
+    <path d="M10 13a5 5 0 0 1 0-7l1.5-1.5a5 5 0 0 1 7 7L17 13" />
+    <path d="M14 11a5 5 0 0 1 0 7l-1.5 1.5a5 5 0 0 1-7-7L7 11" />
+  </Icon>
+);
+
+const IconImage = () => (
+  <Icon className="h-4 w-4">
+    <rect x="4" y="5" width="16" height="14" rx="2" />
+    <path d="M8.5 10.5l2.5 2.5 2-2 3.5 3.5" />
+    <circle cx="9" cy="9" r="1" />
+  </Icon>
+);
+
+const IconBold = () => <span className="text-[15px] font-black leading-none">B</span>;
+const IconItalic = () => <span className="text-[15px] font-semibold italic leading-none">I</span>;
+const IconUnderline = () => <span className="text-[15px] font-semibold leading-none underline decoration-2 underline-offset-2">U</span>;
+const IconStrike = () => <span className="text-[15px] font-semibold leading-none line-through">S</span>;
+
+const IconEmoji = () => <span className="text-[15px] leading-none">☺</span>;
+const IconMerge = () => <span className="text-[14px] font-semibold leading-none">{'{}'}</span>;
+
+const IconTable = () => (
+  <Icon className="h-4 w-4">
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M4 10h16" />
+    <path d="M4 16h16" />
+    <path d="M10 4v16" />
+    <path d="M16 4v16" />
+  </Icon>
+);
+
+const IconAlignLeft = () => (
+  <Icon className="h-4 w-4">
+    <path d="M4 6h9" />
+    <path d="M4 10h14" />
+    <path d="M4 14h9" />
+    <path d="M4 18h14" />
+  </Icon>
+);
+
+const IconAlignCenter = () => (
+  <Icon className="h-4 w-4">
+    <path d="M6 6h12" />
+    <path d="M4 10h16" />
+    <path d="M6 14h12" />
+    <path d="M4 18h16" />
+  </Icon>
+);
+
+const IconAlignRight = () => (
+  <Icon className="h-4 w-4">
+    <path d="M11 6h9" />
+    <path d="M6 10h14" />
+    <path d="M11 14h9" />
+    <path d="M6 18h14" />
+  </Icon>
+);
+
+const IconJustify = () => (
+  <Icon className="h-4 w-4">
+    <path d="M4 6h16" />
+    <path d="M4 10h16" />
+    <path d="M4 14h16" />
+    <path d="M4 18h16" />
+  </Icon>
+);
+
+const IconBullets = () => (
+  <Icon className="h-4 w-4">
+    <circle cx="5" cy="7" r="1.2" />
+    <circle cx="5" cy="12" r="1.2" />
+    <circle cx="5" cy="17" r="1.2" />
+    <path d="M9 7h10" />
+    <path d="M9 12h10" />
+    <path d="M9 17h10" />
+  </Icon>
+);
+
+const IconNumbers = () => (
+  <Icon className="h-4 w-4">
+    <path d="M4 7h2V5" />
+    <path d="M4 12h2V10" />
+    <path d="M4 17h2v-2H4" />
+    <path d="M9 7h10" />
+    <path d="M9 12h10" />
+    <path d="M9 17h10" />
+  </Icon>
+);
+
+const IconOutdent = () => (
+  <Icon className="h-4 w-4">
+    <path d="M9 7H20" />
+    <path d="M9 12H16" />
+    <path d="M9 17H20" />
+    <path d="M4 7l4 3-4 3" />
+  </Icon>
+);
+
+const IconIndent = () => (
+  <Icon className="h-4 w-4">
+    <path d="M4 7h11" />
+    <path d="M4 12h7" />
+    <path d="M4 17h11" />
+    <path d="M20 7l-4 3 4 3" />
+  </Icon>
+);
+
+const IconParagraph = () => <span className="text-[15px] font-semibold leading-none">P</span>;
+const IconHeading = () => <span className="text-[15px] font-semibold leading-none">H</span>;
+
+const ToolbarButton = ({ active, children, title, onClick }) => {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 220 });
+  const buttonRef = useRef(null);
+  const tipRef = useRef(null);
+
+  const updatePosition = () => {
+    const button = buttonRef.current;
+    if (!button || typeof window === "undefined") return;
+
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(260, Math.max(180, Math.min(window.innerWidth - 24, title.length * 7 + 32)));
+    const left = Math.min(Math.max(12, rect.left + rect.width / 2 - width / 2), Math.max(12, window.innerWidth - width - 12));
+    const top = rect.bottom + 8;
+
+    setPosition({ top, left, width });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const onPointerDown = (event) => {
+      if (
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target) &&
+        tipRef.current &&
+        !tipRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const onEscape = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+
+    updatePosition();
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onEscape);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onEscape);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open, title]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label={title}
+        aria-expanded={open}
+        onMouseDown={(event) => event.preventDefault()}
+        onMouseEnter={() => {
+          updatePosition();
+          setOpen(true);
+        }}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => {
+          updatePosition();
+          setOpen(true);
+        }}
+        onBlur={() => setOpen(false)}
+        onClick={onClick}
+        className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition ${
+          active ? "border-[#1f5eff] bg-[#eaf0ff] text-[#1231a2]" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
+      >
+        {children}
+      </button>
+      {open ? (
+        createPortal(
+          <div
+            ref={tipRef}
+            className="z-[90] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-[0_18px_36px_rgba(15,23,42,0.16)]"
+            style={{
+              position: "fixed",
+              top: `${position.top}px`,
+              left: `${position.left}px`,
+              width: `${position.width}px`,
+              maxWidth: "calc(100vw - 24px)",
+            }}
+            onMouseEnter={() => setOpen(true)}
+            onMouseLeave={() => setOpen(false)}
+          >
+            {title}
+          </div>,
+          document.body,
+        )
+      ) : null}
+    </>
+  );
+};
 
 const getSimpleTemplateValidationError = (templateName, htmlValue) => {
   if (!templateName.trim()) {
@@ -161,6 +386,14 @@ function SimpleEmailEditorPage() {
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [imageUrlValue, setImageUrlValue] = useState("");
   const [cursorSelection, setCursorSelection] = useState(null);
+  const [toolbarState, setToolbarState] = useState({
+    bold: false,
+    italic: false,
+    underline: false,
+    strike: false,
+    paragraph: true,
+    heading: false,
+  });
   const editorRef = useRef(null);
   const sourceRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -271,6 +504,7 @@ function SimpleEmailEditorPage() {
       htmlContent: html,
       plainTextContent: text,
     }));
+    refreshToolbarState();
   };
 
   const syncFromSource = (value) => {
@@ -321,6 +555,7 @@ function SimpleEmailEditorPage() {
     restoreSelection();
     execCommand(command, value);
     syncFromEditor();
+    setTimeout(refreshToolbarState, 0);
   };
 
   const handleFontChange = (value) => {
@@ -347,6 +582,20 @@ function SimpleEmailEditorPage() {
   const handleClearFormatting = () => {
     applyCommand("removeFormat");
     applyCommand("unlink");
+  };
+
+  const refreshToolbarState = () => {
+    if (sourceMode) return;
+
+    const blockFormat = getCurrentBlockFormat();
+    setToolbarState({
+      bold: Boolean(document.queryCommandState?.("bold")),
+      italic: Boolean(document.queryCommandState?.("italic")),
+      underline: Boolean(document.queryCommandState?.("underline")),
+      strike: Boolean(document.queryCommandState?.("strikeThrough")),
+      paragraph: blockFormat === "p" || blockFormat === "div" || blockFormat === "body",
+      heading: ["h1", "h2", "h3", "h4"].includes(blockFormat),
+    });
   };
 
   const handleInsertMergeTag = (tag) => {
@@ -480,6 +729,19 @@ function SimpleEmailEditorPage() {
     }
     setSourceMode((current) => !current);
   };
+
+  useEffect(() => {
+    if (sourceMode) return undefined;
+
+    const handleSelectionChange = () => {
+      if (document.activeElement === editorRef.current) {
+        refreshToolbarState();
+      }
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => document.removeEventListener("selectionchange", handleSelectionChange);
+  }, [sourceMode]);
 
   const handleSave = async ({ quit = false } = {}) => {
     const snapshot = getSnapshotForActions();
@@ -719,7 +981,7 @@ function SimpleEmailEditorPage() {
         <div className="flex flex-wrap items-center gap-2 overflow-x-auto">
           <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
             <ToolbarButton title="HTML source" active={sourceMode} onClick={handleToggleSource}>
-              {"<>"}
+              <IconSource />
             </ToolbarButton>
           </div>
 
@@ -749,20 +1011,20 @@ function SimpleEmailEditorPage() {
           </div>
 
           <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <ToolbarButton title="Bold" onClick={() => applyCommand("bold")}>
-              <strong>B</strong>
+            <ToolbarButton active={toolbarState.bold} title="Bold text" onClick={() => applyCommand("bold")}>
+              <IconBold />
             </ToolbarButton>
-            <ToolbarButton title="Italic" onClick={() => applyCommand("italic")}>
-              <em>I</em>
+            <ToolbarButton active={toolbarState.italic} title="Italic text" onClick={() => applyCommand("italic")}>
+              <IconItalic />
             </ToolbarButton>
-            <ToolbarButton title="Underline" onClick={() => applyCommand("underline")}>
-              <u>U</u>
+            <ToolbarButton active={toolbarState.underline} title="Underline text" onClick={() => applyCommand("underline")}>
+              <IconUnderline />
             </ToolbarButton>
-            <ToolbarButton title="Strikethrough" onClick={() => applyCommand("strikeThrough")}>
-              S
+            <ToolbarButton active={toolbarState.strike} title="Strikethrough" onClick={() => applyCommand("strikeThrough")}>
+              <IconStrike />
             </ToolbarButton>
             <ToolbarButton title="Clear formatting" onClick={handleClearFormatting}>
-              ⌫
+              <span className="text-[14px] leading-none">⌫</span>
             </ToolbarButton>
           </div>
 
@@ -774,7 +1036,7 @@ function SimpleEmailEditorPage() {
               aria-label="Text color"
             />
             <ToolbarButton title="Insert link" onClick={handleInsertLink}>
-              🔗
+              <IconLink />
             </ToolbarButton>
             <ToolbarButton
               title="Insert image"
@@ -782,10 +1044,10 @@ function SimpleEmailEditorPage() {
                 setShowImagePrompt(true);
               }}
             >
-              🖼
+              <IconImage />
             </ToolbarButton>
             <ToolbarButton title="Emoji" onClick={() => handleInsertEmoji(EMOJIS[0])}>
-              ☺
+              <IconEmoji />
             </ToolbarButton>
             <ToolbarButton
               title="Merge tags"
@@ -794,30 +1056,50 @@ function SimpleEmailEditorPage() {
                 if (tag && MERGE_TAGS.includes(tag.trim())) handleInsertMergeTag(tag.trim());
               }}
             >
-              {"{}"}
+              <IconMerge />
             </ToolbarButton>
             <ToolbarButton title="Insert table" onClick={handleInsertTable}>
-              ⊞
+              <IconTable />
             </ToolbarButton>
           </div>
 
           <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <ToolbarButton title="Align left" onClick={() => applyCommand("justifyLeft")}>L</ToolbarButton>
-            <ToolbarButton title="Align center" onClick={() => applyCommand("justifyCenter")}>C</ToolbarButton>
-            <ToolbarButton title="Align right" onClick={() => applyCommand("justifyRight")}>R</ToolbarButton>
-            <ToolbarButton title="Justify" onClick={() => applyCommand("justifyFull")}>J</ToolbarButton>
+            <ToolbarButton title="Align left" onClick={() => applyCommand("justifyLeft")}>
+              <IconAlignLeft />
+            </ToolbarButton>
+            <ToolbarButton title="Align center" onClick={() => applyCommand("justifyCenter")}>
+              <IconAlignCenter />
+            </ToolbarButton>
+            <ToolbarButton title="Align right" onClick={() => applyCommand("justifyRight")}>
+              <IconAlignRight />
+            </ToolbarButton>
+            <ToolbarButton title="Justify text" onClick={() => applyCommand("justifyFull")}>
+              <IconJustify />
+            </ToolbarButton>
           </div>
 
           <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <ToolbarButton title="Bulleted list" onClick={() => applyCommand("insertUnorderedList")}>•</ToolbarButton>
-            <ToolbarButton title="Numbered list" onClick={() => applyCommand("insertOrderedList")}>1.</ToolbarButton>
-            <ToolbarButton title="Outdent" onClick={() => applyCommand("outdent")}>←</ToolbarButton>
-            <ToolbarButton title="Indent" onClick={() => applyCommand("indent")}>→</ToolbarButton>
+            <ToolbarButton title="Bulleted list" onClick={() => applyCommand("insertUnorderedList")}>
+              <IconBullets />
+            </ToolbarButton>
+            <ToolbarButton title="Numbered list" onClick={() => applyCommand("insertOrderedList")}>
+              <IconNumbers />
+            </ToolbarButton>
+            <ToolbarButton title="Outdent" onClick={() => applyCommand("outdent")}>
+              <IconOutdent />
+            </ToolbarButton>
+            <ToolbarButton title="Indent" onClick={() => applyCommand("indent")}>
+              <IconIndent />
+            </ToolbarButton>
           </div>
 
           <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
-            <ToolbarButton title="Paragraph" onClick={() => applyCommand("formatBlock", "p")}>P</ToolbarButton>
-            <ToolbarButton title="Heading" onClick={() => applyCommand("formatBlock", "h2")}>H</ToolbarButton>
+            <ToolbarButton active={toolbarState.paragraph} title="Paragraph" onClick={() => applyCommand("formatBlock", "<p>")}>
+              <IconParagraph />
+            </ToolbarButton>
+            <ToolbarButton active={toolbarState.heading} title="Heading" onClick={() => applyCommand("formatBlock", "<h2>")}>
+              <IconHeading />
+            </ToolbarButton>
           </div>
 
           <div className="ml-auto flex items-center gap-4 text-sm text-slate-500">
@@ -830,9 +1112,9 @@ function SimpleEmailEditorPage() {
       <main className="mx-auto w-full max-w-[1380px] px-4 py-6 md:px-6">
         <div className="rounded-[28px] border border-slate-200 bg-[#fbfcff] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.06)] md:p-6">
           <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
+            {/* <div className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
               Clean text editor
-            </div>
+            </div> */}
             <div className="relative min-h-[68vh]">
               {sourceMode ? (
                 <textarea
@@ -948,4 +1230,3 @@ function SimpleEmailEditorPage() {
 }
 
 export default SimpleEmailEditorPage;
-

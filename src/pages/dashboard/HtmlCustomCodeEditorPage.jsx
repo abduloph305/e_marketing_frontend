@@ -490,17 +490,7 @@ function HtmlCustomCodeEditorPage() {
 
         <div className="bg-[linear-gradient(180deg,_rgba(248,250,252,0.88),_rgba(243,246,251,0.98))] px-3 py-3 md:px-5 md:py-5">
           <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Email HTML editor</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Monospace code editing with line numbers and tab support.
-                </p>
-              </div>
-              <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
-                {getLineCount(editorValue)} lines
-              </div>
-            </div>
+            
 
             <div className="grid h-[68vh] min-h-0 grid-cols-[76px_minmax(0,1fr)]">
               <div
@@ -566,7 +556,7 @@ function HtmlCustomCodeEditorPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-5 py-3 text-sm text-slate-500">
-              <span>HTML code editing mode</span>
+              {/* <span>HTML code editing mode</span> */}
               <span>Current line {currentLine}</span>
             </div>
           </div>

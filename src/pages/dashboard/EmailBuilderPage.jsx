@@ -1,4 +1,5 @@
 ﻿import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
@@ -21,7 +22,7 @@ const isDataImageUrl = (value = "") => /^data:image\//i.test(String(value || "")
 
 const imageUrlToPng = async (value = "") => {
   const source = String(value || "").trim();
-  if (!isDataImageUrl(source) || /^data:image\/png/i.test(source)) {
+  if (!isDataImageUrl(source)) {
     return source;
   }
 
@@ -140,8 +141,8 @@ const normalizeBlocks = (blocks = []) =>
     const type = blockDefinitions[block.type] ? block.type : legacyTypeMap[block.type] || block.type;
     const props = block.props || {};
 
-    if (type === "title") return { id: block.id || uid(), type, props: { ...blockDefinitions.title.create(), content: props.content || props.title || props.text || "Your latest update", align: props.align || "left", fontSize: Number(props.fontSize || 34), color: props.color || "#0f172a" } };
-    if (type === "body_text") return { id: block.id || uid(), type, props: { ...blockDefinitions.body_text.create(), content: props.content || props.text || "Write your email copy here.", align: props.align || "left", fontSize: Number(props.fontSize || 16), color: props.color || "#334155", lineHeight: Number(props.lineHeight || 1.7), bold: Boolean(props.bold), italic: Boolean(props.italic), underline: Boolean(props.underline) } };
+    if (type === "title") return { id: block.id || uid(), type, props: { ...blockDefinitions.title.create(), content: props.content ?? props.title ?? props.text ?? "", align: props.align || "left", fontSize: Number(props.fontSize || 34), color: props.color || "#0f172a" } };
+    if (type === "body_text") return { id: block.id || uid(), type, props: { ...blockDefinitions.body_text.create(), content: props.content ?? props.text ?? "", align: props.align || "left", fontSize: Number(props.fontSize || 16), color: props.color || "#334155", lineHeight: Number(props.lineHeight || 1.7), bold: Boolean(props.bold), italic: Boolean(props.italic), underline: Boolean(props.underline) } };
     if (type === "button") return { id: block.id || uid(), type, props: { ...blockDefinitions.button.create(), ...props, text: props.text || props.label || "Call to action" } };
     if (type === "image") return { id: block.id || uid(), type, props: { ...blockDefinitions.image.create(), ...props } };
     if (type === "product") return { id: block.id || uid(), type, props: { ...blockDefinitions.product.create(), ...props } };
@@ -209,12 +210,54 @@ const mapTemplateToForm = (data, mode = "builder") => {
 
 const socialNetworks = ["facebook", "instagram", "x", "youtube", "tiktok", "linkedin"];
 
+const socialNetworkMeta = {
+  facebook: {
+    label: "Facebook",
+    short: "f",
+    color: "#1877f2",
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/5/51/Facebook_f_logo_%282019%29.svg",
+  },
+  instagram: {
+    label: "Instagram",
+    short: "ig",
+    color: "linear-gradient(135deg, #f58529 0%, #dd2a7b 55%, #8134af 100%)",
+    iconUrl: "https://img.freepik.com/premium-vector/instagram-logo-with-colorful-gradient_1273375-1516.jpg?semt=ais_hybrid&w=740&q=80",
+  },
+  x: {
+    label: "X",
+    short: "x",
+    color: "#111827",
+    iconUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRoCYphTFk4G4kKew1pFbWPdQ8n4vv2VyRyGg&s",
+  },
+  youtube: {
+    label: "YouTube",
+    short: "yt",
+    color: "#ff0000",
+    iconUrl: "https://static.vecteezy.com/system/resources/thumbnails/047/580/497/small/youtube-popular-social-media-logo-free-png.png",
+  },
+  tiktok: { label: "TikTok", short: "tt", color: "#111827", iconUrl: "" },
+  linkedin: {
+    label: "LinkedIn",
+    short: "in",
+    color: "#0a66c2",
+    iconUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ20jX_O-zXwzv9VVovmevV9Qp-daMqj9p9SQ&s",
+  },
+};
+
+const getSocialIconMeta = (network = "") => socialNetworkMeta[String(network || "").toLowerCase()] || {
+  label: String(network || "Social").replace(/^\w/, (char) => char.toUpperCase()),
+  short: String(network || "s").slice(0, 2).toLowerCase(),
+  color: "#334155",
+  iconUrl: "",
+};
+
 const blockDefinitions = {
   title: {
     label: "Title",
     description: "Primary headline for the email.",
+    helpText: "Use this for the main heading. It should catch the reader's attention fast.",
     create: () => ({
-      content: "Your latest update",
+      content: "",
       align: "left",
       fontSize: 34,
       color: "#0f172a",
@@ -226,8 +269,9 @@ const blockDefinitions = {
   body_text: {
     label: "Body text",
     description: "Editable paragraph copy with inline formatting.",
+    helpText: "Use this for normal paragraph text. It is good for details and short messages.",
     create: () => ({
-      content: "Write your email copy here.",
+      content: "",
       align: "left",
       fontSize: 16,
       color: "#334155",
@@ -242,6 +286,7 @@ const blockDefinitions = {
   image: {
     label: "Image",
     description: "Hero, product, or banner image.",
+    helpText: "Use this to add a picture, banner, or product image to your email.",
     create: () => ({
       imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
       alt: "Campaign banner",
@@ -254,6 +299,7 @@ const blockDefinitions = {
   video: {
     label: "Video",
     description: "Video thumbnail with a linked play CTA.",
+    helpText: "Use this to show a video preview and link people to watch it.",
     create: () => ({
       videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       thumbnailUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
@@ -266,6 +312,7 @@ const blockDefinitions = {
   button: {
     label: "Button",
     description: "Clear CTA with custom colors and spacing.",
+    helpText: "Use this for a call to action button, like Shop now or Learn more.",
     create: () => ({
       text: "Call to action",
       url: "https://sellerslogin.com",
@@ -283,6 +330,7 @@ const blockDefinitions = {
   dynamic_content: {
     label: "Dynamic content",
     description: "Auto-populated content from a dynamic source.",
+    helpText: "Use this to show content that can change, like product recommendations.",
     create: () => ({
       sourceType: "recommendations",
       sourceQuery: "",
@@ -298,6 +346,7 @@ const blockDefinitions = {
   logo: {
     label: "Logo",
     description: "Brand logo with link and width control.",
+    helpText: "Use this to show your brand logo near the top or bottom of the email.",
     create: () => ({
       imageUrl: "",
       alt: "Logo",
@@ -309,10 +358,13 @@ const blockDefinitions = {
   social: {
     label: "Social",
     description: "Social icon row with custom links.",
+    helpText: "Use this to add social media icons that link to your profiles.",
     create: () => ({
       items: [
-        { network: "instagram", url: "" },
         { network: "facebook", url: "" },
+        { network: "x", url: "" },
+        { network: "youtube", url: "" },
+        { network: "linkedin", url: "" },
       ],
       align: "left",
       iconSize: 32,
@@ -322,6 +374,7 @@ const blockDefinitions = {
   html: {
     label: "HTML",
     description: "Raw HTML block with preview rendering.",
+    helpText: "Use this when you want to add your own HTML code.",
     create: () => ({
       html: "<div style=\"padding:12px;border:1px dashed #cbd5e1;border-radius:16px;\">Custom HTML</div>",
       previewMode: "safe",
@@ -330,6 +383,7 @@ const blockDefinitions = {
   divider: {
     label: "Divider",
     description: "Visual separator with custom spacing.",
+    helpText: "Use this to add a line between two parts of your email.",
     create: () => ({
       thickness: 1,
       width: 100,
@@ -342,6 +396,7 @@ const blockDefinitions = {
   product: {
     label: "Product",
     description: "Single product card tied to the catalog.",
+    helpText: "Use this to show one product with image, price, and a button.",
     create: () => ({
       productIds: [productCatalog[0]?.id || ""],
       layout: "card",
@@ -356,6 +411,7 @@ const blockDefinitions = {
   navigation: {
     label: "Navigation",
     description: "Editable menu items and alignment.",
+    helpText: "Use this to add menu links like Shop, About, or Contact.",
     create: () => ({
       items: [
         { label: "Shop", url: "#" },
@@ -371,6 +427,7 @@ const blockDefinitions = {
   spacer: {
     label: "Spacer",
     description: "Clean vertical breathing room.",
+    helpText: "Use this to add empty space between blocks.",
     create: () => ({
       height: 24,
     }),
@@ -419,6 +476,38 @@ const fontOptions = ["Arial", "Helvetica", "Georgia", "Times New Roman", "Verdan
 
 const stripUnsafeHtml = (html = "") => String(html || "").replace(/<script[\s\S]*?<\/script>/gi, "");
 
+const getTrackingMeta = (block, fallbackSection = "Content") => {
+  const sectionByType = {
+    title: "Header",
+    body_text: "Content",
+    image: "Image",
+    video: "Video",
+    button: "CTA button",
+    logo: "Brand logo",
+    social: "Social links",
+    navigation: "Navigation links",
+    product: "Product block",
+  };
+
+  const section = block.props.section || sectionByType[block.type] || fallbackSection;
+
+  return {
+    blockId: block.id || block._id || "",
+    section,
+    ctaType: block.type,
+  };
+};
+
+const buildTrackingAttrs = (block, fallbackSection = "Content") => {
+  const meta = getTrackingMeta(block, fallbackSection);
+
+  return [
+    `data-track-block="${escapeHtml(meta.blockId)}"`,
+    `data-track-section="${escapeHtml(meta.section)}"`,
+    `data-track-cta-type="${escapeHtml(meta.ctaType)}"`,
+  ].join(" ");
+};
+
 const blockHtml = (block, settings) => {
   const align = block.props.align || "left";
   const textAlign = `text-align:${align};`;
@@ -438,9 +527,9 @@ const blockHtml = (block, settings) => {
     case "body_text":
       return `<p style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || bodySize)}px;line-height:${Number(block.props.lineHeight || lineHeight)};color:${block.props.color || textColor};white-space:pre-line;font-family:${paragraphFont};font-weight:${block.props.bold ? 700 : 400};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}direction:${direction};${textAlign}">${escapeHtml(block.props.content || "").replaceAll("\n", "<br />")}</p>`;
     case "image":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" style="text-decoration:none;">${block.props.imageUrl ? `<img src="${escapeHtml(block.props.imageUrl)}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:${Math.max(20, Number(block.props.width || 100))}%;margin:0 auto;border-radius:24px;object-fit:cover;" />` : `<div style="border:1px dashed #cbd5e1;border-radius:24px;padding:40px 20px;color:#94a3b8;text-align:center;">Image</div>`}</a>${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:${align};font-family:${paragraphFont};">${escapeHtml(block.props.caption)}</p>` : ""}</div>`;
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Image block")} style="text-decoration:none;">${block.props.imageUrl ? `<img src="${escapeHtml(block.props.imageUrl)}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:${Math.max(20, Number(block.props.width || 100))}%;margin:0 auto;border-radius:24px;object-fit:cover;" />` : `<div style="border:1px dashed #cbd5e1;border-radius:24px;padding:40px 20px;color:#94a3b8;text-align:center;">Image</div>`}</a>${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:${align};font-family:${paragraphFont};">${escapeHtml(block.props.caption)}</p>` : ""}</div>`;
     case "video":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.videoUrl || "#")}" style="display:inline-block;text-decoration:none;"><div style="position:relative;border-radius:24px;overflow:hidden;border:1px solid #e5e7eb;background:#0f172a;"><img src="${escapeHtml(block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80")}" alt="${escapeHtml(block.props.alt || "Video preview")}" style="display:block;width:100%;max-width:100%;object-fit:cover;opacity:.92;" /><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="width:72px;height:72px;border-radius:999px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#111827;">▶</span></div></div></a><p style="margin:10px 0 0;color:#64748b;font-family:${paragraphFont};font-size:13px;">${escapeHtml(block.props.caption || block.props.ctaLabel || "Play video")}</p></div>`;
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.videoUrl || "#")}" ${buildTrackingAttrs(block, "Video block")} style="display:inline-block;text-decoration:none;"><div style="position:relative;border-radius:24px;overflow:hidden;border:1px solid #e5e7eb;background:#0f172a;"><img src="${escapeHtml(block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80")}" alt="${escapeHtml(block.props.alt || "Video preview")}" style="display:block;width:100%;max-width:100%;object-fit:cover;opacity:.92;" /><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="width:72px;height:72px;border-radius:999px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#111827;">▶</span></div></div></a><p style="margin:10px 0 0;color:#64748b;font-family:${paragraphFont};font-size:13px;">${escapeHtml(block.props.caption || block.props.ctaLabel || "Play video")}</p></div>`;
     case "button": {
       const width = Math.min(100, Math.max(20, Number(block.props.width || settings.buttons.width || 50)));
       const borderSize = Math.max(0, Number(block.props.borderSize ?? settings.buttons.borderSize ?? 0));
@@ -452,7 +541,7 @@ const blockHtml = (block, settings) => {
       const paddingX = Number(block.props.paddingX || 20);
       const marginY = Number(block.props.marginY || 15);
       const buttonStyle = `display:inline-block;box-sizing:border-box;text-decoration:none;font-size:${fontSize}px;font-family:${settings.buttons.font || "Arial"};font-weight:${block.props.bold === false ? 500 : 700};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}padding:${paddingY}px ${paddingX}px;border-radius:${radius}px;${block.props.style === "ghost" ? `background:transparent;color:${backgroundColor};` : `background:${backgroundColor};color:${fontColor};`}border:${borderSize}px solid ${block.props.borderColor || backgroundColor};width:${width}%;`;
-      return `<div style="text-align:${align};margin:${marginY}px 0;"><a href="${escapeHtml(block.props.url || "#")}" title="${escapeHtml(block.props.tooltip || "")}" style="${buttonStyle}">${escapeHtml(block.props.text || "Click")}</a></div>`;
+      return `<div style="text-align:${align};margin:${marginY}px 0;"><a href="${escapeHtml(block.props.url || "#")}" ${buildTrackingAttrs(block, "CTA button")} title="${escapeHtml(block.props.tooltip || "")}" style="${buttonStyle}">${escapeHtml(block.props.text || "Click")}</a></div>`;
     }
     case "dynamic_content": {
       const products = productCatalog.slice(0, Number(block.props.itemCount || 3));
@@ -478,11 +567,19 @@ const blockHtml = (block, settings) => {
       return `<div style="margin:20px 0 0;text-align:${align};"><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:${paragraphFont};margin:0 0 14px;">${escapeHtml(block.props.title || "Recommended products")}</div>${layout === "grid" ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>${list.map((product) => card(product)).join("")}</tr></table>` : `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${list.map((product) => `<tr>${card(product).replace("<td style=\"width:100%;padding:0 0 12px;\">", "<td style=\"width:100%;padding:0 0 12px;\">")}</tr>`).join("")}</table>`}</div>`;
     }
     case "logo":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" style="text-decoration:none;"><img src="${escapeHtml(block.props.imageUrl || "https://placehold.co/320x120?text=Logo")}" alt="${escapeHtml(block.props.alt || "Logo")}" style="display:inline-block;width:${Math.max(40, Number(block.props.width || 160))}px;max-width:100%;height:auto;" /></a></div>`;
+      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Brand logo")} style="text-decoration:none;"><img src="${escapeHtml(block.props.imageUrl || "https://placehold.co/320x120?text=Logo")}" alt="${escapeHtml(block.props.alt || "Logo")}" style="display:inline-block;width:${Math.max(40, Number(block.props.width || 160))}px;max-width:100%;height:auto;" /></a></div>`;
     case "social": {
       const items = Array.isArray(block.props.items) ? block.props.items : [];
       const icons = items.length ? items : [];
-      return `<div style="text-align:${align};"><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>${icons.map((item) => `<td style="padding:0 ${Math.max(4, Number(block.props.gap || 12) / 2)}px;"><a href="${escapeHtml(item.url || "#")}" style="display:inline-flex;width:${Number(block.props.iconSize || 32)}px;height:${Number(block.props.iconSize || 32)}px;border-radius:999px;background:#0f172a;color:#fff;align-items:center;justify-content:center;text-decoration:none;font-size:10px;font-weight:700;text-transform:uppercase;">${escapeHtml((item.network || "s")[0])}</a></td>`).join("")}</tr></table></div>`;
+      const iconSize = Math.max(20, Number(block.props.iconSize || 32));
+      const gap = Math.max(4, Number(block.props.gap || 12));
+      return `<div style="text-align:${align};"><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>${icons.map((item) => {
+        const meta = getSocialIconMeta(item.network);
+        const imageMarkup = meta.iconUrl
+          ? `<img src="${escapeHtml(meta.iconUrl)}" alt="${escapeHtml(meta.label)}" style="display:block;width:${Math.round(iconSize)}px;height:${Math.round(iconSize)}px;object-fit:contain;border-radius:999px;background:#fff;" />`
+          : `<span style="display:flex;width:${Math.round(iconSize)}px;height:${Math.round(iconSize)}px;border-radius:999px;background:${meta.color || "#334155"};color:#fff;align-items:center;justify-content:center;text-decoration:none;font-size:${Math.max(9, Math.round(iconSize * 0.33))}px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(meta.short)}</span>`;
+        return `<td style="padding:0 ${Math.round(gap / 2)}px;"><a href="${escapeHtml(item.url || "#")}" ${buildTrackingAttrs({ ...block, props: { ...block.props, section: "Social links" } }, "Social links")} style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:999px;box-shadow:0 6px 14px rgba(15,23,42,.08);overflow:hidden;">${imageMarkup}</a></td>`;
+      }).join("")}</tr></table></div>`;
     }
     case "html":
       return stripUnsafeHtml(block.props.html || "");
@@ -495,7 +592,7 @@ const blockHtml = (block, settings) => {
     }
     case "navigation": {
       const items = Array.isArray(block.props.items) ? block.props.items : [];
-      return `<nav style="text-align:${align};font-family:${paragraphFont};font-size:${Number(block.props.fontSize || 14)}px;color:${block.props.color || "#111827"};"><div style="display:inline-flex;flex-wrap:wrap;gap:${Number(block.props.gap || 20)}px;justify-content:${align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start"};">${items.map((item) => `<a href="${escapeHtml(item.url || "#")}" style="color:${block.props.color || "#111827"};text-decoration:none;font-weight:600;">${escapeHtml(item.label || "Link")}</a>`).join("")}</div></nav>`;
+      return `<nav style="text-align:${align};font-family:${paragraphFont};font-size:${Number(block.props.fontSize || 14)}px;color:${block.props.color || "#111827"};"><div style="display:inline-flex;flex-wrap:wrap;gap:${Number(block.props.gap || 20)}px;justify-content:${align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start"};">${items.map((item) => `<a href="${escapeHtml(item.url || "#")}" ${buildTrackingAttrs(block, "Navigation links")} style="color:${block.props.color || "#111827"};text-decoration:none;font-weight:600;">${escapeHtml(item.label || "Link")}</a>`).join("")}</div></nav>`;
     }
     case "spacer":
       return `<div style="height:${Number(block.props.height || 24)}px;"></div>`;
@@ -562,11 +659,11 @@ const previewBlock = (block, settings) => {
   if (block.type === "heading")
     return (
       <h4 className={`font-semibold ${textAlign}`} style={{ fontFamily: headingFont, fontSize: `${Number(block.props.fontSize || headingSize)}px`, lineHeight: 1.15, color: block.props.color || "#0f172a" }}>
-        {block.props.content || "Your latest update"}
+        {block.props.content || ""}
       </h4>
     );
   if (block.type === "body" || block.type === "text")
-    return <p className={`whitespace-pre-line ${textAlign}`} style={{ fontFamily: paragraphFont, color: block.props.color || textColor, fontSize: `${Number(block.props.fontSize || bodySize)}px`, lineHeight: settings.text.lineHeight }}>{block.props.content || "Write your email copy here."}</p>;
+    return <p className={`whitespace-pre-line ${textAlign}`} style={{ fontFamily: paragraphFont, color: block.props.color || textColor, fontSize: `${Number(block.props.fontSize || bodySize)}px`, lineHeight: settings.text.lineHeight }}>{block.props.content || ""}</p>;
   if (block.type === "image")
     return (
       <div>
@@ -684,6 +781,123 @@ const ControlCard = ({ title, description, children, className = "" }) => (
   </section>
 );
 
+const InspectorHelp = ({ text }) => {
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 304 });
+  const buttonRef = useRef(null);
+  const bubbleRef = useRef(null);
+
+  const updatePosition = () => {
+    const button = buttonRef.current;
+    if (!button || typeof window === "undefined") return;
+
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(320, Math.max(240, window.innerWidth - 24));
+    const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+    const bubbleHeight = 96;
+    const fitsBelow = rect.bottom + 8 + bubbleHeight <= window.innerHeight;
+    const top = fitsBelow ? rect.bottom + 8 : Math.max(12, rect.top - 8 - bubbleHeight);
+
+    setPosition({ top, left, width });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target) &&
+        bubbleRef.current &&
+        !bubbleRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+        setPinned(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setPinned(false);
+      }
+    };
+
+    updatePosition();
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  const showHelp = () => {
+    updatePosition();
+    setOpen(true);
+  };
+
+  const hideHelp = () => {
+    if (!pinned) {
+      setOpen(false);
+    }
+  };
+
+  const togglePinned = () => {
+    setPinned((current) => {
+      const next = !current;
+      setOpen(next);
+      if (next) updatePosition();
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white"
+        aria-label="Block help"
+        aria-expanded={open}
+        onClick={togglePinned}
+        onFocus={showHelp}
+        onBlur={hideHelp}
+        onMouseEnter={showHelp}
+        onMouseLeave={hideHelp}
+      >
+        ?
+      </button>
+      {open ? (
+        createPortal(
+          <div
+            ref={bubbleRef}
+            className="z-[80] rounded-2xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600 shadow-[0_18px_36px_rgba(15,23,42,0.12)] whitespace-normal break-words"
+            style={{
+              position: "fixed",
+              top: `${position.top}px`,
+              left: `${position.left}px`,
+              width: `${position.width}px`,
+              maxWidth: "calc(100vw - 24px)",
+            }}
+            onMouseEnter={showHelp}
+            onMouseLeave={hideHelp}
+          >
+            {text}
+          </div>,
+          document.body,
+        )
+      ) : null}
+    </>
+  );
+};
+
 const Field = ({ label, hint, children, className = "" }) => (
   <label className={`block space-y-2 ${className}`}>
     <span className="text-sm font-semibold text-slate-800">{label}</span>
@@ -731,12 +945,60 @@ const CanvasDropZone = ({ active, label, onDragOver, onDrop }) => (
   </div>
 );
 
+const CanvasEditableText = ({
+  value,
+  onChange,
+  className = "",
+  style,
+  placeholder = "",
+}) => {
+  const textRef = useRef(null);
+  const isFocusedRef = useRef(false);
+
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el || document.activeElement === el || isFocusedRef.current) {
+      return;
+    }
+
+    const nextValue = String(value ?? "");
+    if (el.textContent !== nextValue) {
+      el.textContent = nextValue;
+    }
+  }, [value]);
+
+  return (
+    <div
+      ref={textRef}
+      contentEditable
+      suppressContentEditableWarning
+      spellCheck={false}
+      className={className}
+      style={style}
+      data-placeholder={placeholder}
+      onFocus={() => {
+        isFocusedRef.current = true;
+      }}
+      onBlur={() => {
+        isFocusedRef.current = false;
+      }}
+      onInput={(event) => onChange(event.currentTarget.textContent || "")}
+    />
+  );
+};
+
 const CanvasBlock = ({
   block,
   selected,
   settings,
   onSelect,
   onUpdate,
+  onDuplicate,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
   onDragStart,
   onDragEnd,
 }) => {
@@ -772,22 +1034,20 @@ const CanvasBlock = ({
       ...textStyle,
       fontSize: `${Number(block.props.fontSize || 34)}px`,
       lineHeight: 1.15,
+      textAlign: align,
+      width: "100%",
       marginTop: `${Number(block.props.marginTop || 0)}px`,
       marginBottom: `${Number(block.props.marginBottom || 14)}px`,
     };
 
     return (
       <div className={sharedWrap} {...blockProps}>
-        <div
-          contentEditable
-          suppressContentEditableWarning
-          spellCheck={false}
-          className="min-h-[40px] outline-none"
+        <CanvasEditableText
+          value={block.props.content || ""}
+          onChange={(content) => onUpdate(block.id, { content })}
+          className={`min-h-[40px] w-full outline-none ${textAlign}`}
           style={titleStyle}
-          onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
-        >
-          {block.props.content || "Your latest update"}
-        </div>
+        />
       </div>
     );
   }
@@ -797,6 +1057,8 @@ const CanvasBlock = ({
       ...textStyle,
       fontSize: `${Number(block.props.fontSize || 16)}px`,
       lineHeight: Number(block.props.lineHeight || 1.7),
+      textAlign: align,
+      width: "100%",
       fontWeight: block.props.bold ? 700 : 400,
       fontStyle: block.props.italic ? "italic" : "normal",
       textDecoration: block.props.underline ? "underline" : "none",
@@ -806,16 +1068,12 @@ const CanvasBlock = ({
 
     return (
       <div className={sharedWrap} {...blockProps}>
-        <div
-          contentEditable
-          suppressContentEditableWarning
-          spellCheck={false}
-          className="min-h-[48px] whitespace-pre-line outline-none"
+        <CanvasEditableText
+          value={block.props.content || ""}
+          onChange={(content) => onUpdate(block.id, { content })}
+          className={`min-h-[48px] w-full whitespace-pre-wrap break-words outline-none ${textAlign}`}
           style={bodyStyle}
-          onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
-        >
-          {block.props.content || "Write your email copy here."}
-        </div>
+        />
       </div>
     );
   }
@@ -862,19 +1120,63 @@ const CanvasBlock = ({
   }
 
   if (block.type === "social") {
+    const items = Array.isArray(block.props.items) ? block.props.items : [];
+    const iconSize = Math.max(20, Number(block.props.iconSize || 32));
+    const gap = Math.max(4, Number(block.props.gap || 12));
     return (
       <div className={sharedWrap} {...blockProps}>
-        <div className={`flex flex-wrap gap-3 ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}>
-          {(block.props.items || []).map((item, index) => (
-            <a
-              key={`${item.network || "social"}-${index}`}
-              href={item.url || "#"}
-              className="inline-flex items-center justify-center rounded-full bg-slate-900 text-xs font-bold uppercase text-white"
-              style={{ width: `${Number(block.props.iconSize || 32)}px`, height: `${Number(block.props.iconSize || 32)}px` }}
-            >
-              {(item.network || "s").slice(0, 2)}
-            </a>
-          ))}
+        <div
+          className={`flex flex-wrap items-center gap-3 ${
+            align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"
+          }`}
+          style={{ gap: `${gap}px`, minHeight: `${Math.max(48, iconSize + 16)}px` }}
+        >
+          {items.length ? (
+            items.map((item, index) => {
+              const meta = getSocialIconMeta(item.network);
+              const iconImage = meta.iconUrl ? (
+                <img
+                  src={meta.iconUrl}
+                  alt={meta.label}
+                  className="block"
+                  style={{
+                    width: `${iconSize}px`,
+                    height: `${iconSize}px`,
+                    objectFit: "contain",
+                    backgroundColor: "#fff",
+                    borderRadius: "9999px",
+                  }}
+                />
+              ) : (
+                <span
+                  className="inline-flex items-center justify-center rounded-full text-xs font-bold uppercase text-white"
+                  style={{
+                    width: `${iconSize}px`,
+                    height: `${iconSize}px`,
+                    background: meta.color,
+                    fontSize: `${Math.max(9, Math.round(iconSize * 0.33))}px`,
+                  }}
+                >
+                  {meta.short}
+                </span>
+              );
+
+              return (
+                <a
+                  key={`${item.network || "social"}-${index}`}
+                  href={item.url || "#"}
+                  title={meta.label}
+                  className="inline-flex items-center justify-center rounded-full bg-white p-0 shadow-[0_8px_18px_rgba(15,23,42,0.12)] transition hover:scale-[1.03]"
+                >
+                  {iconImage}
+                </a>
+              );
+            })
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              Add social links in the sidebar.
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1022,16 +1324,12 @@ const CanvasBlock = ({
 
   return (
     <div className={sharedWrap} {...blockProps}>
-      <div
-        suppressContentEditableWarning
-        contentEditable
-        spellCheck={false}
-        className={`min-h-[36px] outline-none ${textAlign}`}
+      <CanvasEditableText
+        value={block.props.content || ""}
+        onChange={(content) => onUpdate(block.id, { content })}
+        className={`min-h-[36px] w-full outline-none ${textAlign}`}
         style={textStyle}
-        onInput={(event) => onUpdate(block.id, { content: event.currentTarget.textContent || "" })}
-      >
-        {block.props.content || "Write your email copy here."}
-      </div>
+      />
     </div>
   );
 };
@@ -1047,13 +1345,24 @@ const BlockInspector = ({
   canMoveUp,
   canMoveDown,
 }) => {
+  const logoFileInputRef = useRef(null);
+
   if (!block) return null;
 
   const update = (patch) => onUpdate(block.id, patch);
   const title = blockDefinitions[block.type]?.label || block.type;
+  const helpText = blockDefinitions[block.type]?.helpText || "Use this block to add content to your email.";
 
   const wrap = (body, description = "Click a block in the canvas and adjust its settings.") => (
-    <ControlCard title={title} description={description}>
+    <ControlCard
+      title={
+        <span className="inline-flex items-center gap-2">
+          <span>{title}</span>
+          <InspectorHelp text={helpText} />
+        </span>
+      }
+      description=""
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
           {block.type}
@@ -1319,10 +1628,30 @@ const BlockInspector = ({
   }
 
   if (block.type === "logo") {
+    const handleLogoFilePick = (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      (async () => {
+        const pngDataUrl = await fileToPngDataUrl(file);
+        update({ imageUrl: pngDataUrl });
+        event.target.value = "";
+      })();
+    };
+
     return wrap(
       <div className="space-y-4">
         <Field label="Logo URL">
           <input className="field" value={block.props.imageUrl || ""} onChange={(event) => update({ imageUrl: event.target.value })} />
+        </Field>
+        <Field label="Upload logo">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="secondary-button px-4 py-2 text-sm" onClick={() => logoFileInputRef.current?.click()}>
+              Choose file
+            </button>
+            <span className="text-xs text-slate-500">PNG, JPG, or SVG from your computer</span>
+          </div>
+          <input ref={logoFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFilePick} />
         </Field>
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Alt text">
@@ -1379,24 +1708,51 @@ const BlockInspector = ({
         </div>
         <div className="space-y-3">
           {items.map((item, index) => (
-            <div key={`${item.network || "social"}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <div className="grid gap-3 md:grid-cols-[140px_1fr_auto]">
-                <select className="field" value={item.network || "instagram"} onChange={(event) => updateItem(index, { network: event.target.value })}>
-                  {socialNetworks.map((network) => (
-                    <option key={network} value={network}>
-                      {network}
-                    </option>
-                  ))}
-                </select>
-                <input className="field" value={item.url || ""} onChange={(event) => updateItem(index, { url: event.target.value })} placeholder="https://..." />
-                <button type="button" className="secondary-button px-3 py-2 text-sm" onClick={() => update({ items: items.filter((_, currentIndex) => currentIndex !== index) })}>
-                  Remove
+            <div key={`${item.network || "social"}-${index}`} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white shadow-sm">
+                    {getSocialIconMeta(item.network).iconUrl ? (
+                      <img
+                        src={getSocialIconMeta(item.network).iconUrl}
+                        alt={getSocialIconMeta(item.network).label}
+                        className="h-full w-full object-contain p-1.5"
+                      />
+                    ) : (
+                      <span className="text-xs font-bold uppercase text-slate-700">
+                        {getSocialIconMeta(item.network).short}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    className="border-0 bg-transparent p-0 text-base font-medium text-slate-900 outline-none"
+                    value={item.network || "facebook"}
+                    onChange={(event) => updateItem(index, { network: event.target.value })}
+                  >
+                    {socialNetworks.map((network) => (
+                      <option key={network} value={network}>
+                        {network}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="text-2xl leading-none text-[#6b63ff] transition hover:text-[#5148f6]"
+                  aria-label={`Remove ${item.network || "social"} link`}
+                  onClick={() => update({ items: items.filter((_, currentIndex) => currentIndex !== index) })}
+                >
+                  ×
                 </button>
               </div>
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-900">URL</span>
+                <input className="field" value={item.url || ""} onChange={(event) => updateItem(index, { url: event.target.value })} placeholder="https://" />
+              </label>
             </div>
           ))}
-          <button type="button" className="secondary-button px-4 py-2 text-sm" onClick={() => update({ items: [...items, { network: "instagram", url: "" }] })}>
-            Add icon
+          <button type="button" className="secondary-button px-5 py-2 text-sm font-semibold" onClick={() => update({ items: [...items, { network: "instagram", url: "" }] })}>
+            Add icons
           </button>
         </div>
       </div>
@@ -1585,6 +1941,7 @@ function EmailBuilderPage() {
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [lastSavedSignature, setLastSavedSignature] = useState("");
   const [paletteDragType, setPaletteDragType] = useState("");
+  const [dragId, setDragId] = useState("");
   const [dropIndex, setDropIndex] = useState(-1);
   const [selectedBlockId, setSelectedBlockId] = useState("");
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -1711,7 +2068,13 @@ function EmailBuilderPage() {
   const serializedForm = useMemo(() => JSON.stringify(form), [form]);
   const hasUnsavedChanges = serializedForm !== lastSavedSignature;
   const currentSettings = form.styleSettings || cloneStyleSettings();
-  const previewHtml = previewHtmlSource || form.advancedHtml.trim() || generatedHtml;
+  const previewHtml = previewHtmlSource || (showAdvanced && form.advancedHtml.trim() ? form.advancedHtml.trim() : generatedHtml);
+
+  useEffect(() => {
+    if (!isPreviewOpen && previewHtmlSource) {
+      setPreviewHtmlSource("");
+    }
+  }, [serializedForm, isPreviewOpen, previewHtmlSource]);
 
   const updateForm = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const updateStyle = (section, key, value) =>
@@ -1808,7 +2171,7 @@ function EmailBuilderPage() {
   const insertSection = (section) => {
     const blocks = section.build().map((block) => ({ ...block, id: block.id || uid() }));
     setActivePanel("content");
-    setContentTab("sections");
+    setContentTab("blocks");
     setSelectedBlockId(blocks[0]?.id || "");
     setForm((current) => ({ ...current, blocks: [...current.blocks, ...blocks] }));
   };
@@ -1869,7 +2232,10 @@ function EmailBuilderPage() {
 
   const buildRenderableHtml = async () => {
     const normalizedForm = await normalizeTemplateImageUrls(form);
-    return normalizedForm.advancedHtml.trim() || buildTemplateHtml(normalizedForm);
+    if (showAdvanced && normalizedForm.advancedHtml.trim()) {
+      return normalizedForm.advancedHtml.trim();
+    }
+    return buildTemplateHtml(normalizedForm);
   };
 
   const extractSaveErrorMessage = (requestError) =>
@@ -2023,15 +2389,14 @@ function EmailBuilderPage() {
       return;
     }
 
-    if (!previewHtml.trim()) {
-      toast.error("Add content for your template");
-      return;
-    }
-
     setIsSendingTestEmail(true);
 
     try {
       const normalizedHtml = await buildRenderableHtml();
+      if (!normalizedHtml.trim()) {
+        toast.error("Add content for your template");
+        return;
+      }
       await api.post("/email/test-send", {
         email: recipientEmail,
         subject,
@@ -2766,12 +3131,12 @@ function EmailBuilderPage() {
                   background: currentSettings.layout.bodyColor,
                 }}
               >
-                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
+                {/* <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
                   <span>{currentSettings.header.showBrowserLink ? "View in browser link enabled" : "View in browser link hidden"}</span>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Drag blocks here
                   </span>
-                </div>
+                </div> */}
 
                 <div
                   className="space-y-4 p-4 md:p-6"
@@ -2798,6 +3163,7 @@ function EmailBuilderPage() {
                             onSelect={() => {
                               setSelectedBlockId(block.id);
                               setActivePanel("content");
+                              setContentTab("blocks");
                             }}
                             onUpdate={updateBlock}
                             onDuplicate={duplicateBlock}

@@ -15,6 +15,21 @@ const initialFilters = {
   tags: "",
 };
 
+const quickFilterHelp = {
+  Active:
+    "These contacts are currently open to receiving emails and have been engaging normally. They are the best audience for sending emails.",
+  "At risk":
+    "These contacts have not been opening or clicking your emails much lately. They may still receive emails, but they are less active and could stop engaging soon.",
+  Suppressed:
+    "These contacts are blocked from receiving emails. They are usually removed from sends because of rules, complaints, or other account protections.",
+  Unsubscribed:
+    "These people chose to stop receiving your emails. They should not be included in regular email sends.",
+  Bounced:
+    "These are contacts whose emails could not be delivered. This usually happens when the email address is invalid or not accepting messages.",
+  Blocked:
+    "These contacts were blocked after a spam complaint or a manual review. They are excluded from sends, and spam-blocked contacts stay locked.",
+};
+
 const formatLabel = (value) =>
   String(value || "")
     .replaceAll("_", " ")
@@ -267,6 +282,7 @@ function AudienceListPage() {
     total: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
 
   const selectedCount = selectedIds.length;
 
@@ -314,6 +330,18 @@ function AudienceListPage() {
 
   useEffect(() => {
     loadSubscribers(1);
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!event.target?.closest?.("[data-action-menu]")) {
+        setOpenActionMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
   const selectedSubscribers = useMemo(
@@ -367,6 +395,42 @@ function AudienceListPage() {
       );
     }
   };
+
+  const handleSuppressSubscriber = async (subscriberId) => {
+    try {
+      await api.post(`/email/subscribers/${subscriberId}/suppress`, {
+        reason: "manual",
+      });
+      toast.success("Subscriber suppressed");
+      loadSubscribers(pagination.page);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Unable to suppress subscriber",
+      );
+    }
+  };
+
+  const handleBlockSubscriber = async (subscriberId) => {
+    try {
+      await api.post(`/email/subscribers/${subscriberId}/block`);
+      toast.success("Subscriber blocked");
+      loadSubscribers(pagination.page);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to block subscriber");
+    }
+  };
+
+  const handleUnblockSubscriber = async (subscriberId) => {
+    try {
+      await api.post(`/email/subscribers/${subscriberId}/unblock`);
+      toast.success("Subscriber unblocked");
+      loadSubscribers(pagination.page);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to unblock subscriber");
+    }
+  };
+
+  const closeActionMenu = () => setOpenActionMenuId(null);
 
   const applyQuickFilter = (nextFilters) => {
     setFilters(nextFilters);
@@ -545,9 +609,7 @@ function AudienceListPage() {
             <h3 className="text-lg font-semibold text-[#2f2b3d]">
               Quick filters
             </h3>
-            <p className="mt-1 text-sm text-[#6e6787]">
-              Jump to common audience slices without rebuilding the search form.
-            </p>
+         
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button
@@ -571,37 +633,54 @@ function AudienceListPage() {
             { label: "Active", status: "subscribed", tone: "emerald" },
             {
               label: "At risk",
-              status: "unsubscribed,bounced,complained,suppressed",
+              status: "unsubscribed,bounced,blocked,complained,suppressed",
               tone: "amber",
             },
             { label: "Suppressed", status: "suppressed", tone: "slate" },
             { label: "Unsubscribed", status: "unsubscribed", tone: "orange" },
             { label: "Bounced", status: "bounced", tone: "rose" },
-          ].map((filter) => (
-            <button
-              key={filter.label}
-              type="button"
-              className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition ${
-                filter.tone === "emerald"
-                  ? "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                  : filter.tone === "amber"
-                    ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-                    : filter.tone === "slate"
-                      ? "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                      : filter.tone === "orange"
-                        ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
-                        : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-              }`}
-              onClick={() =>
-                applyQuickFilter({
-                  ...initialFilters,
-                  status: filter.status || "",
-                  tags: filter.tags || "",
-                })
-              }
-            >
-              {filter.label}
-            </button>
+            { label: "Blocked", status: "blocked", tone: "rose" },
+          ].map((filter, index) => (
+            <div key={filter.label} className="group relative z-20">
+              <button
+                type="button"
+                className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  filter.tone === "emerald"
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : filter.tone === "amber"
+                      ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : filter.tone === "slate"
+                        ? "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        : filter.tone === "orange"
+                          ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                          : "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                }`}
+                onClick={() =>
+                  applyQuickFilter({
+                    ...initialFilters,
+                    status: filter.status || "",
+                    tags: filter.tags || "",
+                  })
+                }
+                aria-describedby={`quick-filter-help-${filter.label.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                {filter.label}
+              </button>
+              <div
+                id={`quick-filter-help-${filter.label.toLowerCase().replace(/\s+/g, "-")}`}
+                role="tooltip"
+                className={`pointer-events-none absolute bottom-full z-30 mb-3 w-[280px] rounded-2xl border border-[#e7def8] bg-white p-4 text-left text-sm text-[#5f5878] opacity-0 shadow-[0_18px_50px_rgba(43,29,75,0.14)] transition duration-200 group-hover:-translate-y-0 group-hover:opacity-100 group-focus-within:opacity-100 ${
+                  index === 0 ? "left-0 translate-x-0" : "left-1/2 -translate-x-1/2"
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7a7296]">
+                  {filter.label}
+                </p>
+                <p className="mt-2 leading-6">
+                  {quickFilterHelp[filter.label] || ""}
+                </p>
+              </div>
+            </div>
           ))}
         </div>
       </section>
@@ -664,12 +743,12 @@ function AudienceListPage() {
         </section>
       ) : null}
 
-      <section className="shell-card-strong overflow-hidden">
+      <section className="shell-card-strong relative overflow-visible">
         {isLoading ? (
           <LoadingState message="Loading CRM records..." />
         ) : subscribers.length ? (
           <>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-visible">
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b border-slate-100 bg-[#faf7ff] text-[#7a7296]">
                   <tr>
@@ -766,54 +845,127 @@ function AudienceListPage() {
                         </p>
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex flex-wrap gap-2">
-                          <Link
-                            className="font-medium text-[#2f2b3d]"
-                            to={`/audience/${subscriber._id}`}
+                        <div
+                          className="relative flex justify-end"
+                          data-action-menu={subscriber._id}
+                          onMouseEnter={() => setOpenActionMenuId(subscriber._id)}
+                        >
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#ddd4f2] bg-white text-[#5f5878] transition hover:bg-[#f4f0ff] hover:text-[#2f2b3d]"
+                            aria-haspopup="menu"
+                            aria-expanded={openActionMenuId === subscriber._id}
+                            aria-label={`Open actions for ${subscriber.firstName} ${subscriber.lastName}`}
+                            onClick={() =>
+                              setOpenActionMenuId((current) =>
+                                current === subscriber._id ? null : subscriber._id,
+                              )
+                            }
                           >
-                            View
-                          </Link>
-                          <Link
-                            className="font-medium text-[#6d28d9]"
-                            to={`/audience/${subscriber._id}/edit`}
-                          >
-                            Edit
-                          </Link>
-                          {subscriber.status !== "subscribed" ? (
-                            <button
-                              type="button"
-                              className="font-medium text-emerald-600"
-                              onClick={() =>
-                                handleStatusUpdate(subscriber._id, "subscribed")
-                              }
+                            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                              <circle cx="12" cy="5" r="1.7" />
+                              <circle cx="12" cy="12" r="1.7" />
+                              <circle cx="12" cy="19" r="1.7" />
+                            </svg>
+                          </button>
+
+                          {openActionMenuId === subscriber._id ? (
+                            <div
+                              role="menu"
+                              className="absolute right-[calc(100%+10px)] top-1/2 z-50 min-w-[260px] -translate-y-1/2 overflow-hidden rounded-2xl border border-[#e7def8] bg-white p-1 shadow-[0_18px_42px_rgba(43,29,75,0.14)]"
                             >
-                              Reactivate
-                            </button>
-                          ) : null}
-                          {subscriber.status !== "unsubscribed" ? (
-                            <button
-                              type="button"
-                              className="font-medium text-amber-700"
-                              onClick={() =>
-                                handleStatusUpdate(
-                                  subscriber._id,
-                                  "unsubscribed",
-                                )
-                              }
-                            >
-                              Unsubscribe
-                            </button>
-                          ) : null}
-                          {subscriber.status !== "suppressed" ? (
-                            <button
-                              type="button"
-                              className="font-medium text-slate-600"
-                              onClick={() =>
-                                handleStatusUpdate(subscriber._id, "suppressed")
-                              }
-                            >
-                              Suppress
-                            </button>
+                              <div className="grid grid-cols-2 gap-1">
+                                <Link
+                                  role="menuitem"
+                                  className="flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-medium text-[#2f2b3d] transition hover:bg-[#f4f0ff]"
+                                  to={`/audience/${subscriber._id}`}
+                                  onClick={closeActionMenu}
+                                >
+                                  View
+                                </Link>
+                                <Link
+                                  role="menuitem"
+                                  className="flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-medium text-[#6d28d9] transition hover:bg-[#f4f0ff]"
+                                  to={`/audience/${subscriber._id}/edit`}
+                                  onClick={closeActionMenu}
+                                >
+                                  Edit
+                                </Link>
+                                {subscriber.status === "blocked" ? (
+                                  subscriber.blockedReason === "spam" ? (
+                                    <span className="flex min-h-11 items-center rounded-xl px-3 py-2 text-sm font-medium text-rose-500">
+                                      Blocked by spam
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-[#f4f0ff]"
+                                      onClick={() => {
+                                        closeActionMenu();
+                                        handleUnblockSubscriber(subscriber._id);
+                                      }}
+                                    >
+                                      Unblock
+                                    </button>
+                                  )
+                                ) : subscriber.status !== "subscribed" ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-emerald-600 transition hover:bg-[#f4f0ff]"
+                                    onClick={() => {
+                                      closeActionMenu();
+                                      handleStatusUpdate(subscriber._id, "subscribed");
+                                    }}
+                                  >
+                                    Reactivate
+                                  </button>
+                                ) : null}
+                                {subscriber.status === "blocked" ? null : (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-700 transition hover:bg-[#f4f0ff]"
+                                    onClick={() => {
+                                      closeActionMenu();
+                                      handleBlockSubscriber(subscriber._id);
+                                    }}
+                                  >
+                                    Block
+                                  </button>
+                                )}
+                                {subscriber.status === "blocked" ? null : subscriber.status !== "unsubscribed" ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-amber-700 transition hover:bg-[#f4f0ff]"
+                                    onClick={() => {
+                                      closeActionMenu();
+                                      handleStatusUpdate(
+                                        subscriber._id,
+                                        "unsubscribed",
+                                      );
+                                    }}
+                                  >
+                                    Unsubscribe
+                                  </button>
+                                ) : null}
+                                {subscriber.status === "blocked" ? null : subscriber.status !== "suppressed" ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="flex min-h-11 w-full items-center rounded-xl px-3 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-[#f4f0ff]"
+                                    onClick={() => {
+                                      closeActionMenu();
+                                      handleSuppressSubscriber(subscriber._id);
+                                    }}
+                                  >
+                                    Suppress
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
                           ) : null}
                         </div>
                       </td>
@@ -913,6 +1065,7 @@ function AudienceListPage() {
               ["Subscribed", summary.byStatus?.subscribed || 0],
               ["Unsubscribed", summary.byStatus?.unsubscribed || 0],
               ["Bounced", summary.byStatus?.bounced || 0],
+              ["Blocked", summary.byStatus?.blocked || 0],
               ["Complained", summary.byStatus?.complained || 0],
               ["Suppressed", summary.byStatus?.suppressed || 0],
               ["Revenue", formatCurrency(summary.totalSpent)],

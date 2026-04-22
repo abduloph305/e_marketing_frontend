@@ -63,7 +63,13 @@ const initialOverview = {
   complaintRate: 0,
   unsubscribeCount: 0,
   conversionCount: 0,
+  conversionRate: 0,
   revenueGenerated: 0,
+  roiPercent: null,
+  listGrowth: {
+    netGrowth: 0,
+    growthRate: 0,
+  },
   sendingHealth: {
     score: 0,
     label: 'Stable',
@@ -173,9 +179,26 @@ function OverviewPage() {
     {
       title: 'Revenue',
       value: `$${Number(overview.revenueGenerated || 0).toLocaleString()}`,
-      hint: overview.revenueGenerated ? 'Attributed revenue' : 'Attribution ready',
+      hint:
+        overview.roiPercent === null || overview.roiPercent === undefined
+          ? 'Attribution ready'
+          : `ROI ${Number(overview.roiPercent || 0).toFixed(2)}%`,
       tone: 'emerald',
       icon: '$',
+    },
+    {
+      title: 'Conversions',
+      value: overview.conversionCount.toLocaleString(),
+      hint: `Conversion rate ${Number(overview.conversionRate || 0).toFixed(2)}%`,
+      tone: 'emerald',
+      icon: 'CL',
+    },
+    {
+      title: 'List growth',
+      value: overview.listGrowth?.netGrowth?.toLocaleString?.() || '0',
+      hint: `${Number(overview.listGrowth?.growthRate || 0).toFixed(2)}% growth`,
+      tone: 'blue',
+      icon: 'SN',
     },
   ]
 
@@ -367,7 +390,7 @@ function OverviewPage() {
                     <tr key={campaign._id} className="border-t border-slate-100">
                       <td className="px-6 py-4 font-semibold text-slate-900">{campaign.name}</td>
                       <td className="px-6 py-4 capitalize text-slate-500">{campaign.status}</td>
-                      <td className="px-6 py-4 text-slate-600">{campaign.totalSent}</td>
+                      <td className="px-6 py-4 text-slate-600">{campaign.sent || campaign.totalSent || 0}</td>
                       <td className="px-6 py-4 text-slate-600">{campaign.openRate}%</td>
                       <td className="px-6 py-4 text-slate-600">{campaign.clickRate}%</td>
                     </tr>

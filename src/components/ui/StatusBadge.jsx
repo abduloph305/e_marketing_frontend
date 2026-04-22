@@ -3,6 +3,7 @@ function StatusBadge({ status }) {
     subscribed: 'bg-[#e8f7ec] text-[#166534]',
     unsubscribed: 'bg-[#edf0f5] text-[#475467]',
     bounced: 'bg-[#fff4e5] text-[#b54708]',
+    blocked: 'bg-[#ffe4e6] text-[#9f1239]',
     complained: 'bg-[#ffe4e8] text-[#b42318]',
     suppressed: 'bg-[#f3e8ff] text-[#7e22ce]',
     draft: 'bg-[#edf0f5] text-[#475467]',

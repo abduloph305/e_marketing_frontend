@@ -287,7 +287,7 @@ function CampaignFormPage() {
     }
   };
 
-  const handleSendTest = async (emails) => {
+  const handleSendTest = async ({ emails, subject, message, html }) => {
     const recipientEmails = Array.isArray(emails)
       ? emails
           .map((email) => String(email || "").trim().toLowerCase())
@@ -302,25 +302,32 @@ function CampaignFormPage() {
     setIsSendingTest(true);
 
     try {
-      let campaignId = id;
+      if (!id) {
+        const testSubject = String(subject || "").trim();
+        const testHtml = String(html || "").trim();
 
-      if (!campaignId) {
-        const savedCampaign = await saveCampaign(
-          form.isRecurring ? "scheduled" : "draft",
-          {
-            redirectAfterSave: false,
-          },
-        );
+        if (!testSubject) {
+          toast.error("Enter a subject for the test email");
+          return;
+        }
 
-        campaignId = savedCampaign?._id;
-      }
+        if (!testHtml) {
+          toast.error("Add content for your template");
+          return;
+        }
 
-      if (!campaignId) {
-        toast.error("Save the campaign before sending a test");
+        await api.post("/email/test-send", {
+          emails: recipientEmails,
+          subject: testSubject,
+          html: testHtml,
+          message: String(message || "").trim(),
+        });
+        toast.success("Test email sent");
+        setIsTestModalOpen(false);
         return;
       }
 
-      await api.post(`/email/campaigns/${campaignId}/send-test`, {
+      await api.post(`/email/campaigns/${id}/send-test`, {
         emails: recipientEmails,
       });
       toast.success("Test email sent");
@@ -810,12 +817,12 @@ function CampaignFormPage() {
         open={isTestModalOpen}
         title="Preview & test"
         subject={form.subject}
-      previewText={form.previewText}
-      previewHtml={selectedTemplate?.htmlContent || ""}
-      bodyWidth={760}
-      onClose={() => setIsTestModalOpen(false)}
-      onSendTest={({ emails }) => handleSendTest(emails)}
-    />
+        previewText={form.previewText}
+        previewHtml={selectedTemplate?.htmlContent || ""}
+        bodyWidth={760}
+        onClose={() => setIsTestModalOpen(false)}
+        onSendTest={handleSendTest}
+      />
     </div>
   );
 }

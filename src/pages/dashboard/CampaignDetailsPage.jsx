@@ -44,6 +44,23 @@ const stripTags = (value = "") =>
     .replace(/\s+/g, " ")
     .trim();
 
+const formatClickMapLabel = (item = {}) => item.section || "Other links";
+
+const getClickMapMax = (rows = []) =>
+  rows.reduce((max, row) => Math.max(max, Number(row.totalClicks || 0)), 0);
+
+const getClickShare = (item = {}, max = 0) =>
+  max ? Number(((Number(item.totalClicks || 0) / max) * 100).toFixed(1)) : 0;
+
+const getHeatIntensity = (share = 0) => {
+  if (share >= 90) return 1;
+  if (share >= 70) return 0.88;
+  if (share >= 50) return 0.75;
+  if (share >= 30) return 0.62;
+  if (share >= 15) return 0.48;
+  return 0.34;
+};
+
 const parseTemplateHtml = (html = "") => {
   if (!html) {
     return {};
@@ -166,6 +183,8 @@ function CampaignDetailsPage() {
     () => buildCampaignPreview(campaign, previewTemplate),
     [campaign, previewTemplate],
   );
+  const clickMapRows = useMemo(() => campaign?.clickMap || [], [campaign]);
+  const clickMapMax = useMemo(() => getClickMapMax(clickMapRows), [clickMapRows]);
 
   const previewStats = [
     ["Campaign", campaignPreview.campaignName],
@@ -240,6 +259,16 @@ function CampaignDetailsPage() {
       ["Revenue", `$${Number(totals.revenue || 0).toFixed(2)}`],
     ];
   }, [campaign]);
+
+  const getRecentEventDetail = (event) =>
+    event.section ||
+    event.blockId ||
+    event.clickedLink ||
+    event.bounceType ||
+    event.complaintFeedbackType ||
+    event.deviceType ||
+    event.ipAddress ||
+    "-";
 
   const sendProgress = campaign?.sendProgress || {
     percentage: 0,
@@ -725,12 +754,7 @@ function CampaignDetailsPage() {
                         {event.recipientEmail}
                       </td>
                       <td className="px-6 py-4 text-[#6e6787]">
-                        {event.clickedLink ||
-                          event.bounceType ||
-                          event.complaintFeedbackType ||
-                          event.deviceType ||
-                          event.ipAddress ||
-                          "-"}
+                        {getRecentEventDetail(event)}
                       </td>
                       <td className="px-6 py-4 text-[#6e6787]">
                         {formatDateTime(event.timestamp)}
@@ -787,6 +811,73 @@ function CampaignDetailsPage() {
               <EmptyState
                 title="No link activity"
                 description="Link rollups will appear when click events start carrying URL metadata."
+              />
+            </div>
+          )}
+        </article>
+
+        <article className="shell-card-strong overflow-hidden">
+          <div className="border-b border-slate-100 px-6 py-5">
+            <h3 className="text-base font-semibold text-[#2f2b3d]">Heatmap</h3>
+            <p className="mt-1 text-[12px] text-[#6e6787]">
+              Section-wise clicks show which part of the email people engaged with most.
+            </p>
+          </div>
+          {clickMapRows.length ? (
+            <div className="space-y-4 p-6">
+              {clickMapRows.map((item, index) => {
+                const share = getClickShare(item, clickMapMax);
+                const intensity = getHeatIntensity(share);
+                const width = clickMapMax
+                  ? Math.max(10, Math.round((Number(item.totalClicks || 0) / clickMapMax) * 100))
+                  : 0;
+                const isTop = index === 0;
+
+                return (
+                  <div
+                    key={`${item.blockId || item.section || "click-map"}-${item.totalClicks}-${index}`}
+                    className={`rounded-2xl border p-4 transition ${
+                      isTop
+                        ? "border-[#d8c8ff] bg-gradient-to-br from-[#faf7ff] via-[#f4edff] to-[#ece3ff]"
+                        : "border-[#efe6ff] bg-[#faf7ff]"
+                    }`}
+                    style={{
+                      boxShadow: `0 0 0 1px rgba(109, 40, 217, ${0.04 + intensity * 0.08}) inset`,
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[13px] font-semibold text-[#2f2b3d]">
+                          {formatClickMapLabel(item)}
+                        </p>
+                        <p className="mt-1 text-[12px] text-[#6e6787]">
+                          {item.uniqueRecipients} unique people · {item.totalClicks} clicks
+                        </p>
+                      </div>
+                      <span className="soft-pill">{item.blockId ? "Tracked block" : "Tracked link"}</span>
+                    </div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#ebe4fb]">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${width}%`,
+                          background: `linear-gradient(90deg, rgba(109,40,217,${0.52 + intensity * 0.38}) 0%, rgba(168,85,247,${0.48 + intensity * 0.32}) 100%)`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-[11px] text-[#7b7592]">
+                      <span>{share}% of top click intensity</span>
+                      {isTop ? <span className="font-semibold text-[#6d28d9]">Top clicked area</span> : <span>Heat intensity {Math.round(intensity * 100)}%</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-6">
+              <EmptyState
+                title="No click map yet"
+                description="Once tracked links include section metadata, this card will show which email blocks drive the most clicks."
               />
             </div>
           )}

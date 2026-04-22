@@ -43,8 +43,8 @@
   {
     label: "Segments",
     path: "/segments",
-    description:
-      "Define audience rules for sharper targeting and personalization.",
+    // description:
+      // "Define audience rules for sharper targeting and personalization.",
     group: "Audience",
     icon: "segments",
     permission: "manage_audience",
@@ -76,7 +76,7 @@
   {
     label: "Automations",
     path: "/automations",
-    description: "Organize lifecycle journeys and trigger-based email flows.",
+    // description: "Organize lifecycle journeys and trigger-based email flows.",
     group: "Workspace",
     icon: "automation",
     permission: "manage_automations",

@@ -15,6 +15,9 @@ const initialReportState = {
   campaignReport: [],
   audienceGrowth: [],
   deliverability: {},
+  deviceBreakdown: [],
+  locationBreakdown: {},
+  timeBasedAnalytics: {},
   exportFormats: [],
 };
 
@@ -33,6 +36,11 @@ const rangeOptions = [
 
 const formatRate = (numerator, denominator) =>
   denominator ? `${((numerator / denominator) * 100).toFixed(2)}%` : "0.00%";
+
+const formatPercentValue = (value) => `${Number(value || 0).toFixed(2)}%`;
+
+const formatCurrency = (value) =>
+  `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 function ReportsPage() {
   const toast = useContext(ToastContext);
@@ -81,6 +89,11 @@ function ReportsPage() {
           ? data.audienceGrowth
           : [],
         deliverability: data.deliverability || {},
+        deviceBreakdown: Array.isArray(data.deviceBreakdown)
+          ? data.deviceBreakdown
+          : [],
+        locationBreakdown: data.locationBreakdown || {},
+        timeBasedAnalytics: data.timeBasedAnalytics || {},
         exportFormats: Array.isArray(data.exportFormats)
           ? data.exportFormats
           : [],
@@ -301,6 +314,38 @@ function ReportsPage() {
         />
       </section>
 
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Conversion rate"
+          value={formatPercentValue(reports.selectedSummary?.conversionRate)}
+          hint={`${reports.selectedSummary?.conversionCount || 0} conversions`}
+          accent="success"
+        />
+        <StatCard
+          label="Revenue"
+          value={formatCurrency(reports.selectedSummary?.revenueGenerated || 0)}
+          hint={
+            reports.selectedSummary?.roiPercent === null ||
+            reports.selectedSummary?.roiPercent === undefined
+              ? "ROI ready once campaign cost is provided"
+              : `ROI ${formatPercentValue(reports.selectedSummary?.roiPercent)}`
+          }
+          accent="success"
+        />
+        <StatCard
+          label="CTOR"
+          value={formatPercentValue(reports.selectedSummary?.ctor)}
+          hint="Unique clicks over unique opens"
+          accent="info"
+        />
+        <StatCard
+          label="List growth"
+          value={reports.selectedSummary?.netGrowth || 0}
+          hint={`${reports.selectedSummary?.growthRate || 0}% growth`}
+          accent="warning"
+        />
+      </section>
+
       <section className="space-y-6">
         <AnalyticsWidgetShell
           eyebrow="Summaries"
@@ -386,6 +431,72 @@ function ReportsPage() {
             )}
           </div>
         </AnalyticsWidgetShell>
+
+        <AnalyticsWidgetShell
+          eyebrow="Audience intelligence"
+          title="Device, location, and timing"
+          description="These breakdowns come from the new backend analytics snapshot."
+        >
+          <div className="grid gap-4 p-6 xl:grid-cols-3">
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Devices
+              </p>
+              <div className="mt-4 space-y-3">
+                {reports.deviceBreakdown.length ? (
+                  reports.deviceBreakdown.map((item) => (
+                    <div key={item.deviceType} className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+                      <span className="text-ui-body capitalize">{item.deviceType}</span>
+                      <span className="text-ui-strong">
+                        {item.count} ({formatPercentValue(item.share)})
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-ui-body">
+                    Device mix will appear once opens and clicks are tracked.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Top countries
+              </p>
+              <div className="mt-4 space-y-3">
+                {reports.locationBreakdown?.countries?.length ? (
+                  reports.locationBreakdown.countries.slice(0, 5).map((item) => (
+                    <div key={item.label} className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+                      <span className="text-ui-body">{item.label}</span>
+                      <span className="text-ui-strong">
+                        {item.count} ({formatPercentValue(item.share)})
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-ui-body">
+                    Location mix will appear as more activity is recorded.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Best send time
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-ui-strong">
+                {reports.timeBasedAnalytics?.bestHour !== null &&
+                reports.timeBasedAnalytics?.bestHour !== undefined
+                  ? `${String(reports.timeBasedAnalytics.bestHour.hour).padStart(2, "0")}:00`
+                  : "No data yet"}
+              </p>
+              <p className="mt-1 text-sm text-ui-body">
+                {reports.timeBasedAnalytics?.bestDay?.label ||
+                  "Best day appears once timing data builds up."}
+              </p>
+            </div>
+          </div>
+        </AnalyticsWidgetShell>
       </section>
 
       <section className="space-y-6">
@@ -430,6 +541,7 @@ function ReportsPage() {
                     <th className="px-6 py-4 font-medium">Delivered</th>
                     <th className="px-6 py-4 font-medium">Opens</th>
                     <th className="px-6 py-4 font-medium">Clicks</th>
+                    <th className="px-6 py-4 font-medium">Cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -445,6 +557,9 @@ function ReportsPage() {
                       </td>
                       <td className="px-6 py-4 text-ui-body">{row.opens}</td>
                       <td className="px-6 py-4 text-ui-body">{row.clicks}</td>
+                      <td className="px-6 py-4 text-ui-body">
+                        {formatCurrency(row.estimatedCost || 0)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -537,6 +652,12 @@ function ReportsPage() {
                           <p className="text-xs text-ui-muted">Click rate</p>
                           <p className="mt-1 text-xl font-semibold text-ui-strong">
                             {clickRate}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-ui-muted">Estimated cost</p>
+                          <p className="mt-1 text-xl font-semibold text-ui-strong">
+                            {formatCurrency(campaign.estimatedCost || 0)}
                           </p>
                         </div>
                       </div>

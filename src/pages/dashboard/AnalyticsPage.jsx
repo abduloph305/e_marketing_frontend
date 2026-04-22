@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AnalyticsWidgetShell from '../../components/ui/AnalyticsWidgetShell.jsx'
 import DateRangeFilter from '../../components/ui/DateRangeFilter.jsx'
 import EmptyState from '../../components/ui/EmptyState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
@@ -10,6 +11,10 @@ const initialFilters = {
   startDate: '',
   endDate: '',
 }
+
+const formatPercent = (value) => `${Number(value || 0).toFixed(2)}%`
+const formatCurrency = (value) =>
+  `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 
 function AnalyticsPage() {
   const [filters, setFilters] = useState(initialFilters)
@@ -89,13 +94,149 @@ function AnalyticsPage() {
         <StatCard
           label="People opened"
           value={summary?.opens || 0}
-          hint={`Open rate ${summary?.openRate || 0}%`}
+          hint={`Open rate ${formatPercent(summary?.openRate)}`}
         />
         <StatCard
           label="People clicked"
           value={summary?.clicks || 0}
-          hint={`Click rate ${summary?.clickRate || 0}%`}
+          hint={`Click rate ${formatPercent(summary?.clickRate)}`}
         />
+        <StatCard
+          label="Conversions"
+          value={summary?.conversionCount || 0}
+          hint={`Rate ${formatPercent(summary?.conversionRate)}`}
+          accent="success"
+        />
+        <StatCard
+          label="Revenue"
+          value={formatCurrency(summary?.revenueGenerated || 0)}
+          hint={
+            summary?.roiPercent === null || summary?.roiPercent === undefined
+              ? 'ROI ready once cost is added'
+              : `ROI ${formatPercent(summary?.roiPercent)}`
+          }
+          accent="success"
+        />
+        <StatCard
+          label="CTOR"
+          value={formatPercent(summary?.ctor)}
+          hint="Unique clicks divided by unique opens"
+          accent="info"
+        />
+        <StatCard
+          label="List growth"
+          value={summary?.listGrowth?.netGrowth || 0}
+          hint={`Growth ${formatPercent(summary?.listGrowth?.growthRate)}`}
+          accent="warning"
+        />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <AnalyticsWidgetShell
+          eyebrow="Growth"
+          title="Audience and revenue snapshot"
+          description="Live conversion and list movement signals for the selected window."
+        >
+          <div className="grid gap-4 p-6 md:grid-cols-2">
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Conversions
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-ui-strong">
+                {summary?.conversionCount || 0}
+              </p>
+              <p className="mt-1 text-sm text-ui-body">
+                {formatPercent(summary?.conversionRate)} conversion rate
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Revenue and ROI
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-ui-strong">
+                {formatCurrency(summary?.revenueGenerated || 0)}
+              </p>
+              <p className="mt-1 text-sm text-ui-body">
+                {summary?.roiPercent === null || summary?.roiPercent === undefined
+                  ? 'ROI appears once a campaign cost is provided'
+                  : `ROI ${formatPercent(summary?.roiPercent)}`}
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                List growth
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-ui-strong">
+                {summary?.listGrowth?.netGrowth || 0}
+              </p>
+              <p className="mt-1 text-sm text-ui-body">
+                {summary?.listGrowth?.newSubscribers || 0} new subscribers,{' '}
+                {summary?.listGrowth?.unsubscribes || 0} unsubscribes
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Best timing
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-ui-strong">
+                {summary?.timeBasedAnalytics?.bestHour !== null &&
+                summary?.timeBasedAnalytics?.bestHour !== undefined
+                  ? `Hour ${summary?.timeBasedAnalytics?.bestHour?.hour}`
+                  : 'No timing data yet'}
+              </p>
+              <p className="mt-1 text-sm text-ui-body">
+                {summary?.timeBasedAnalytics?.bestDay?.label || 'Best day appears here later'}
+              </p>
+            </div>
+          </div>
+        </AnalyticsWidgetShell>
+
+        <AnalyticsWidgetShell
+          eyebrow="Reach"
+          title="Device and location mix"
+          description="Breakdown of who is engaging and where it is coming from."
+        >
+          <div className="grid gap-4 p-6">
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Devices
+              </p>
+              <div className="mt-4 space-y-3">
+                {summary?.deviceBreakdown?.length ? (
+                  summary.deviceBreakdown.map((item) => (
+                    <div key={item.deviceType} className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+                      <span className="text-ui-body capitalize">{item.deviceType}</span>
+                      <span className="text-ui-strong">
+                        {item.count} ({formatPercent(item.share)})
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-ui-body">Device data will appear once opens and clicks arrive.</p>
+                )}
+              </div>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">
+                Top locations
+              </p>
+              <div className="mt-4 space-y-3">
+                {summary?.locationBreakdown?.countries?.length ? (
+                  summary.locationBreakdown.countries.slice(0, 5).map((item) => (
+                    <div key={item.label} className="grid grid-cols-[1fr_auto] gap-3 text-sm">
+                      <span className="text-ui-body">{item.label}</span>
+                      <span className="text-ui-strong">
+                        {item.count} ({formatPercent(item.share)})
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-ui-body">Location data will appear as engagement is recorded.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </AnalyticsWidgetShell>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -155,7 +296,7 @@ function AnalyticsPage() {
                   {topCampaigns.map((campaign) => (
                     <tr key={campaign._id} className="border-t border-slate-100">
                       <td className="px-6 py-4">{campaign.name}</td>
-                      <td className="px-6 py-4">{campaign.totalSent}</td>
+                      <td className="px-6 py-4">{campaign.sent || campaign.totalSent || 0}</td>
                       <td className="px-6 py-4">{campaign.openRate}%</td>
                       <td className="px-6 py-4">{campaign.clickRate}%</td>
                     </tr>
@@ -172,6 +313,38 @@ function AnalyticsPage() {
             )}
           </div>
         </article>
+      </section>
+
+      <section>
+        <AnalyticsWidgetShell
+          eyebrow="Time analytics"
+          title="Best send time signals"
+          description="This updates from the latest open and click activity."
+        >
+          <div className="grid gap-4 p-6 md:grid-cols-3">
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">Best hour</p>
+              <p className="mt-2 text-xl font-semibold text-ui-strong">
+                {summary?.timeBasedAnalytics?.bestHour !== null &&
+                summary?.timeBasedAnalytics?.bestHour !== undefined
+                  ? `${String(summary.timeBasedAnalytics.bestHour.hour).padStart(2, '0')}:00`
+                  : 'No data'}
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">Best day</p>
+              <p className="mt-2 text-xl font-semibold text-ui-strong">
+                {summary?.timeBasedAnalytics?.bestDay?.label || 'No data'}
+              </p>
+            </div>
+            <div className="rounded-[24px] border border-ui bg-[var(--bg-subtle)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ui-muted">CTR support</p>
+              <p className="mt-2 text-sm text-ui-body">
+                The backend now returns CTOR, device mix, and location mix so send-time decisions can be based on real engagement.
+              </p>
+            </div>
+          </div>
+        </AnalyticsWidgetShell>
       </section>
     </div>
   )
