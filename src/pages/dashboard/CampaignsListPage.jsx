@@ -272,11 +272,11 @@ function CampaignsListPage() {
               <button
                 type="button"
                 onClick={() => {
-                setRecurringOnly(false);
-                setBroadcastOnly(false);
-                setStatusTab(tab.value);
-                loadCampaigns(1, tab.value, filters, false);
-              }}
+                  setRecurringOnly(false);
+                  setBroadcastOnly(false);
+                  setStatusTab(tab.value);
+                  loadCampaigns(1, tab.value, filters, false, false);
+                }}
                 className={`rounded-[3px] border px-4 py-2 text-sm font-semibold capitalize transition ${
                   !recurringOnly && statusTab === tab.value
                     ? "border-[#7c3aed] bg-[#7c3aed] text-white"
@@ -294,22 +294,22 @@ function CampaignsListPage() {
             <button
               type="button"
               onClick={() => {
-              const nextRecurringOnly = !recurringOnly;
-              setRecurringOnly(nextRecurringOnly);
-              if (nextRecurringOnly) {
-                setBroadcastOnly(false);
-              }
-              if (nextRecurringOnly) {
-                setStatusTab("all");
-              }
-              loadCampaigns(
-                1,
-                nextRecurringOnly ? "all" : statusTab,
-                filters,
-                nextRecurringOnly,
-                false,
-              );
-            }}
+                const nextRecurringOnly = !recurringOnly;
+                const nextBroadcastOnly = false;
+
+                setRecurringOnly(nextRecurringOnly);
+                setBroadcastOnly(nextBroadcastOnly);
+                if (nextRecurringOnly) {
+                  setStatusTab("all");
+                }
+                loadCampaigns(
+                  1,
+                  nextRecurringOnly ? "all" : statusTab,
+                  filters,
+                  nextRecurringOnly,
+                  nextBroadcastOnly,
+                );
+              }}
               className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
                 recurringOnly
                   ? "border-[#7c3aed] bg-[#7c3aed] text-white"
@@ -326,20 +326,22 @@ function CampaignsListPage() {
             <button
               type="button"
               onClick={() => {
-              const nextBroadcastOnly = !broadcastOnly;
-              setBroadcastOnly(nextBroadcastOnly);
-              setRecurringOnly(false);
-              if (nextBroadcastOnly) {
-                setStatusTab("all");
-              }
-              loadCampaigns(
-                1,
-                nextBroadcastOnly ? "all" : statusTab,
-                filters,
-                false,
-                nextBroadcastOnly,
-              );
-            }}
+                const nextBroadcastOnly = !broadcastOnly;
+                const nextRecurringOnly = false;
+
+                setBroadcastOnly(nextBroadcastOnly);
+                setRecurringOnly(nextRecurringOnly);
+                if (nextBroadcastOnly) {
+                  setStatusTab("all");
+                }
+                loadCampaigns(
+                  1,
+                  nextBroadcastOnly ? "all" : statusTab,
+                  filters,
+                  nextRecurringOnly,
+                  nextBroadcastOnly,
+                );
+              }}
               className={`rounded-[3px] border px-4 py-2 text-sm font-semibold transition ${
                 broadcastOnly
                   ? "border-[#7c3aed] bg-[#7c3aed] text-white"
@@ -358,7 +360,7 @@ function CampaignsListPage() {
           className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1.4fr)_220px_220px_auto]"
           onSubmit={(event) => {
             event.preventDefault();
-            loadCampaigns(1, statusTab, filters, recurringOnly);
+            loadCampaigns(1, statusTab, filters, recurringOnly, broadcastOnly);
           }}
         >
           <input

@@ -1,6 +1,14 @@
 export const segmentMatchModes = [
-  { value: "and", label: "Match all conditions", helper: "All selected rules must be true." },
-  { value: "or", label: "Match any condition", helper: "A contact only needs one rule to match." },
+  {
+    value: "and",
+    label: "Match all conditions",
+    helper: "All conditions below must be true for a contact to match this segment.",
+  },
+  {
+    value: "or",
+    label: "Match any condition",
+    helper: "A contact will match this segment if even one of the conditions below is true.",
+  },
 ];
 
 export const segmentFieldGroups = [

@@ -143,80 +143,26 @@ function SegmentFormPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
-  if (isPresetPickerMode) {
-    return (
-      <div className="space-y-6">
-        <section className="shell-card-strong p-6 md:p-8">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <PageHeader
-              eyebrow="Segments"
-              title="Choose a ready-made segment"
-              description="Pick a preset first, then edit it in the segment builder."
-            />
-            <Link
-              to="/segments"
-              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-            >
-              Back to segments
-            </Link>
-          </div>
-        </section>
+  useEffect(() => {
+    if (id || !preset) {
+      return;
+    }
 
-        <section className="shell-card-strong p-6">
-          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
-                Ready-made segments
-              </p>
-              <h3 className="mt-2 text-2xl font-semibold text-[#2f2b3d]">
-                Select one to edit
-              </h3>
-            </div>
-            <Link
-              to="/segments/new?mode=create"
-              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
-            >
-              Create from scratch instead
-            </Link>
-          </div>
+    const nextDefinition = preset.definition || { logic: "and", filters: [createBlankCondition()] };
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {segmentQuickPresets.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-[28px] border border-[#e7def8] bg-gradient-to-br from-white to-[#faf7ff] p-5"
-              >
-                <h4 className="text-lg font-semibold text-[#2f2b3d]">
-                  {item.name}
-                </h4>
-                <p className="mt-2 text-sm text-[#6e6787]">
-                  {item.description}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {item.definition.filters.map((filter) => (
-                    <span
-                      key={`${item.id}-${filter.field}`}
-                      className="soft-pill"
-                    >
-                      {getFieldOption(filter.field)?.label || filter.field}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-5">
-                  <Link
-                    to={`/segments/new?mode=ready-made&preset=${item.id}`}
-                    className="primary-button w-full"
-                  >
-                    Edit preset
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
+    setName(preset.name || "");
+    setLogic(nextDefinition.logic || "and");
+    setConditions(
+      (nextDefinition.filters?.length ? nextDefinition.filters : [createBlankCondition()]).map(
+        (condition) => ({
+          category: condition.category || "activity",
+          field: condition.field || "lastActivityAt",
+          operator: condition.operator || "in_last_days",
+          value: String(condition.value ?? ""),
+        }),
+      ),
     );
-  }
+  }, [id, preset]);
 
   useEffect(() => {
     if (!id) {
@@ -390,6 +336,81 @@ function SegmentFormPage() {
     }
   };
 
+  if (isPresetPickerMode) {
+    return (
+      <div className="space-y-6">
+        <section className="shell-card-strong p-6 md:p-8">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <PageHeader
+              eyebrow="Segments"
+              title="Choose a ready-made segment"
+              description="Pick a preset first, then edit it in the segment builder."
+            />
+            <Link
+              to="/segments"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Back to segments
+            </Link>
+          </div>
+        </section>
+
+        <section className="shell-card-strong p-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8b84a5]">
+                Ready-made segments
+              </p>
+              <h3 className="mt-2 text-2xl font-semibold text-[#2f2b3d]">
+                Select one to edit
+              </h3>
+            </div>
+            <Link
+              to="/segments/new?mode=create"
+              className="rounded-xl border border-[#ddd4f2] px-4 py-3 text-sm font-medium text-[#5f5878]"
+            >
+              Create from scratch instead
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {segmentQuickPresets.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-[28px] border border-[#e7def8] bg-gradient-to-br from-white to-[#faf7ff] p-5"
+              >
+                <h4 className="text-lg font-semibold text-[#2f2b3d]">
+                  {item.name}
+                </h4>
+                <p className="mt-2 text-sm text-[#6e6787]">
+                  {item.description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {item.definition.filters.map((filter) => (
+                    <span
+                      key={`${item.id}-${filter.field}`}
+                      className="soft-pill"
+                    >
+                      {getFieldOption(filter.field)?.label || filter.field}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-5">
+                  <Link
+                    to={`/segments/new?mode=ready-made&preset=${item.id}`}
+                    className="primary-button w-full"
+                  >
+                    Edit preset
+                  </Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return <LoadingState message="Loading segment builder..." />;
   }
@@ -459,20 +480,39 @@ function SegmentFormPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {segmentMatchModes.map((mode) => (
-                <button
-                  key={mode.value}
-                  type="button"
-                  onClick={() => setLogic(mode.value)}
-                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                    logic === mode.value
-                      ? "border-[#2f2b3d] bg-[#2f2b3d] text-white"
-                      : "border-[#ddd4f2] bg-white text-[#5f5878]"
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
+              {segmentMatchModes.map((mode) => {
+                const tooltipAlignClass =
+                  mode.value === "and"
+                    ? "left-0 translate-x-0"
+                    : "right-0 translate-x-0";
+
+                return (
+                <div key={mode.value} className="group relative z-10">
+                  <button
+                    type="button"
+                    onClick={() => setLogic(mode.value)}
+                    aria-describedby={`segment-match-mode-${mode.value}`}
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      logic === mode.value
+                        ? "border-[#2f2b3d] bg-[#2f2b3d] text-white"
+                        : "border-[#ddd4f2] bg-white text-[#5f5878]"
+                    }`}
+                  >
+                    {mode.label}
+                  </button>
+                  <div
+                    id={`segment-match-mode-${mode.value}`}
+                    role="tooltip"
+                    className={`pointer-events-none absolute bottom-full z-20 mb-3 w-80 rounded-2xl border border-[#e7def8] bg-white px-4 py-3 text-left text-sm text-[#5f5878] opacity-0 shadow-[0_18px_50px_rgba(43,29,75,0.14)] transition duration-200 group-hover:opacity-100 group-focus-within:opacity-100 ${tooltipAlignClass}`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#7a7296]">
+                      {mode.label}
+                    </p>
+                    <p className="mt-2 leading-6">{mode.helper}</p>
+                  </div>
+                </div>
+                );
+              })}
             </div>
 
             <div className="space-y-4">
