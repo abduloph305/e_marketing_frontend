@@ -539,7 +539,7 @@ function AutomationFormPage() {
     }
   }
 
-  const handlePreviewTestRun = async ({ recipientEmail, firstName, lastName }) => {
+  const handlePreviewTestRun = async ({ emails }) => {
     const validationMessage = validateForm()
     if (validationMessage) {
       setError(validationMessage)
@@ -547,31 +547,27 @@ function AutomationFormPage() {
       return
     }
 
-    let workflowId = id
+    const recipientEmails = Array.isArray(emails)
+      ? emails.map((email) => String(email || '').trim().toLowerCase()).filter(Boolean)
+      : []
 
-    if (!workflowId) {
-      const savedWorkflow = await handleSubmit(form.status, { redirectAfterSave: false })
-      workflowId = savedWorkflow?._id
-    }
-
-    if (!workflowId) {
-      toast.error('Save the workflow before sending a test')
+    if (!recipientEmails.length) {
+      toast.error('Enter a recipient email address')
       return
     }
 
     try {
-      await api.post(`/automations/${workflowId}/sample-execution`, {
-        recipientEmail,
-        firstName,
-        lastName,
+      await api.post(`/automations/${id || 'preview'}/sample-execution`, {
+        workflow: {
+          ...form,
+          steps: form.steps,
+        },
+        emails: recipientEmails,
       })
       toast.success('Test email sent')
       setShowPreviewModal(false)
-      if (!id && workflowId) {
-        navigate(`/automations/${workflowId}/edit`, { replace: true })
-      }
     } catch (requestError) {
-      toast.error(requestError.response?.data?.message || 'Unable to process sample execution')
+      toast.error(requestError.response?.data?.message || 'Unable to send test email')
     }
   }
 
@@ -876,7 +872,6 @@ function AutomationFormPage() {
         open={showPreviewModal}
         workflow={{
           ...form,
-          _id: id || 'preview-workflow',
           steps: form.steps,
         }}
         previewEmail={previewEmail}

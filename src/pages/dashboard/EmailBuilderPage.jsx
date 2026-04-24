@@ -4,7 +4,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import LoadingState from "../../components/ui/LoadingState.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { getCatalogProduct, productCatalog } from "../../data/productCatalog.js";
-import { buildTemplateHtml as buildPresetTemplateHtml, getTemplatePreset } from "../../data/templatePresets.js";
+import { getTemplatePreset } from "../../data/templatePresets.js";
 import { api } from "../../lib/api.js";
 
 const uid = () =>
@@ -196,6 +196,9 @@ const legacyToBlocks = (design = {}) => {
 
 const mapTemplateToForm = (data, mode = "builder") => {
   const design = data.designJson || {};
+  const blocks = legacyToBlocks(design);
+  const isBuilderTemplate = design.editor === "drag-drop" || blocks.length > 0;
+
   return {
     ...createInitialForm(mode),
     name: data.name || "",
@@ -203,8 +206,8 @@ const mapTemplateToForm = (data, mode = "builder") => {
     previewText: data.previewText || "",
     accentColor: design.accentColor || "#6d28d9",
     styleSettings: cloneStyleSettings(design.styleSettings || design.builderSettings || {}),
-    blocks: legacyToBlocks(design),
-    advancedHtml: data.htmlContent || "",
+    blocks,
+    advancedHtml: mode === "html" || !isBuilderTemplate ? data.htmlContent || "" : "",
   };
 };
 
@@ -476,6 +479,11 @@ const fontOptions = ["Arial", "Helvetica", "Georgia", "Times New Roman", "Verdan
 
 const stripUnsafeHtml = (html = "") => String(html || "").replace(/<script[\s\S]*?<\/script>/gi, "");
 
+const formatTextHtml = (value = "") => escapeHtml(value).replace(/\r\n|\r|\n/g, "<br />");
+
+const wrapEmailBlock = (html = "") =>
+  `<div class="email-builder-block" style="box-sizing:border-box;margin:0 0 16px;padding:16px;border:1px solid #e2e8f0;border-radius:24px;background:#ffffff;">${html}</div>`;
+
 const getTrackingMeta = (block, fallbackSection = "Content") => {
   const sectionByType = {
     title: "Header",
@@ -523,13 +531,13 @@ const blockHtml = (block, settings) => {
 
   switch (block.type) {
     case "title":
-      return `<h1 style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || headingSize)}px;line-height:1.15;color:${block.props.color || "#0f172a"};font-weight:700;font-family:${headingFont};direction:${direction};${textAlign}">${escapeHtml(block.props.content || "")}</h1>`;
+      return wrapEmailBlock(`<h1 style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || headingSize)}px;line-height:1.15;color:${block.props.color || "#0f172a"};font-weight:700;font-family:${headingFont};direction:${direction};${textAlign}">${formatTextHtml(block.props.content || "")}</h1>`);
     case "body_text":
-      return `<p style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || bodySize)}px;line-height:${Number(block.props.lineHeight || lineHeight)};color:${block.props.color || textColor};white-space:pre-line;font-family:${paragraphFont};font-weight:${block.props.bold ? 700 : 400};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}direction:${direction};${textAlign}">${escapeHtml(block.props.content || "").replaceAll("\n", "<br />")}</p>`;
+      return wrapEmailBlock(`<p style="margin:${Number(block.props.marginTop || 0)}px 0 ${Number(block.props.marginBottom || 14)}px;font-size:${Number(block.props.fontSize || bodySize)}px;line-height:${Number(block.props.lineHeight || lineHeight)};color:${block.props.color || textColor};white-space:pre-wrap;font-family:${paragraphFont};font-weight:${block.props.bold ? 700 : 400};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}direction:${direction};${textAlign}">${formatTextHtml(block.props.content || "")}</p>`);
     case "image":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Image block")} style="text-decoration:none;">${block.props.imageUrl ? `<img src="${escapeHtml(block.props.imageUrl)}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:${Math.max(20, Number(block.props.width || 100))}%;margin:0 auto;border-radius:24px;object-fit:cover;" />` : `<div style="border:1px dashed #cbd5e1;border-radius:24px;padding:40px 20px;color:#94a3b8;text-align:center;">Image</div>`}</a>${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:${align};font-family:${paragraphFont};">${escapeHtml(block.props.caption)}</p>` : ""}</div>`;
+      return wrapEmailBlock(`<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Image block")} style="text-decoration:none;">${block.props.imageUrl ? `<img src="${escapeHtml(block.props.imageUrl)}" alt="${escapeHtml(block.props.alt || "Image")}" style="display:block;width:${Math.max(20, Number(block.props.width || 100))}%;margin:0 auto;border-radius:24px;object-fit:cover;" />` : `<div style="border:1px dashed #cbd5e1;border-radius:24px;padding:40px 20px;color:#94a3b8;text-align:center;">Image</div>`}</a>${block.props.caption ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#64748b;text-align:${align};font-family:${paragraphFont};">${escapeHtml(block.props.caption)}</p>` : ""}</div>`);
     case "video":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.videoUrl || "#")}" ${buildTrackingAttrs(block, "Video block")} style="display:inline-block;text-decoration:none;"><div style="position:relative;border-radius:24px;overflow:hidden;border:1px solid #e5e7eb;background:#0f172a;"><img src="${escapeHtml(block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80")}" alt="${escapeHtml(block.props.alt || "Video preview")}" style="display:block;width:100%;max-width:100%;object-fit:cover;opacity:.92;" /><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="width:72px;height:72px;border-radius:999px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#111827;">▶</span></div></div></a><p style="margin:10px 0 0;color:#64748b;font-family:${paragraphFont};font-size:13px;">${escapeHtml(block.props.caption || block.props.ctaLabel || "Play video")}</p></div>`;
+      return wrapEmailBlock(`<div style="text-align:${align};"><a href="${escapeHtml(block.props.videoUrl || "#")}" ${buildTrackingAttrs(block, "Video block")} style="display:inline-block;text-decoration:none;"><div style="position:relative;border-radius:24px;overflow:hidden;border:1px solid #e5e7eb;background:#0f172a;"><img src="${escapeHtml(block.props.thumbnailUrl || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80")}" alt="${escapeHtml(block.props.alt || "Video preview")}" style="display:block;width:100%;max-width:100%;object-fit:cover;opacity:.92;" /><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;"><span style="width:72px;height:72px;border-radius:999px;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#111827;">▶</span></div></div></a><p style="margin:10px 0 0;color:#64748b;font-family:${paragraphFont};font-size:13px;">${escapeHtml(block.props.caption || block.props.ctaLabel || "Play video")}</p></div>`);
     case "button": {
       const width = Math.min(100, Math.max(20, Number(block.props.width || settings.buttons.width || 50)));
       const borderSize = Math.max(0, Number(block.props.borderSize ?? settings.buttons.borderSize ?? 0));
@@ -541,7 +549,7 @@ const blockHtml = (block, settings) => {
       const paddingX = Number(block.props.paddingX || 20);
       const marginY = Number(block.props.marginY || 15);
       const buttonStyle = `display:inline-block;box-sizing:border-box;text-decoration:none;font-size:${fontSize}px;font-family:${settings.buttons.font || "Arial"};font-weight:${block.props.bold === false ? 500 : 700};${block.props.italic ? "font-style:italic;" : ""}${block.props.underline ? "text-decoration:underline;" : ""}padding:${paddingY}px ${paddingX}px;border-radius:${radius}px;${block.props.style === "ghost" ? `background:transparent;color:${backgroundColor};` : `background:${backgroundColor};color:${fontColor};`}border:${borderSize}px solid ${block.props.borderColor || backgroundColor};width:${width}%;`;
-      return `<div style="text-align:${align};margin:${marginY}px 0;"><a href="${escapeHtml(block.props.url || "#")}" ${buildTrackingAttrs(block, "CTA button")} title="${escapeHtml(block.props.tooltip || "")}" style="${buttonStyle}">${escapeHtml(block.props.text || "Click")}</a></div>`;
+      return wrapEmailBlock(`<div style="text-align:${align};margin:${marginY}px 0;"><a href="${escapeHtml(block.props.url || "#")}" ${buildTrackingAttrs(block, "CTA button")} title="${escapeHtml(block.props.tooltip || "")}" style="${buttonStyle}">${escapeHtml(block.props.text || "Click")}</a></div>`);
     }
     case "dynamic_content": {
       const products = productCatalog.slice(0, Number(block.props.itemCount || 3));
@@ -564,35 +572,35 @@ const blockHtml = (block, settings) => {
             </tr>
           </table>
         </td>`;
-      return `<div style="margin:20px 0 0;text-align:${align};"><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:${paragraphFont};margin:0 0 14px;">${escapeHtml(block.props.title || "Recommended products")}</div>${layout === "grid" ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>${list.map((product) => card(product)).join("")}</tr></table>` : `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${list.map((product) => `<tr>${card(product).replace("<td style=\"width:100%;padding:0 0 12px;\">", "<td style=\"width:100%;padding:0 0 12px;\">")}</tr>`).join("")}</table>`}</div>`;
+      return wrapEmailBlock(`<div style="margin:20px 0 0;text-align:${align};"><div style="font-size:20px;font-weight:700;color:#0f172a;font-family:${paragraphFont};margin:0 0 14px;">${escapeHtml(block.props.title || "Recommended products")}</div>${layout === "grid" ? `<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr>${list.map((product) => card(product)).join("")}</tr></table>` : `<table role="presentation" width="100%" cellspacing="0" cellpadding="0">${list.map((product) => `<tr>${card(product).replace("<td style=\"width:100%;padding:0 0 12px;\">", "<td style=\"width:100%;padding:0 0 12px;\">")}</tr>`).join("")}</table>`}</div>`);
     }
     case "logo":
-      return `<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Brand logo")} style="text-decoration:none;"><img src="${escapeHtml(block.props.imageUrl || "https://placehold.co/320x120?text=Logo")}" alt="${escapeHtml(block.props.alt || "Logo")}" style="display:inline-block;width:${Math.max(40, Number(block.props.width || 160))}px;max-width:100%;height:auto;" /></a></div>`;
+      return wrapEmailBlock(`<div style="text-align:${align};"><a href="${escapeHtml(block.props.linkUrl || "#")}" ${buildTrackingAttrs(block, "Brand logo")} style="text-decoration:none;"><img src="${escapeHtml(block.props.imageUrl || "https://placehold.co/320x120?text=Logo")}" alt="${escapeHtml(block.props.alt || "Logo")}" style="display:inline-block;width:${Math.max(40, Number(block.props.width || 160))}px;max-width:100%;height:auto;" /></a></div>`);
     case "social": {
       const items = Array.isArray(block.props.items) ? block.props.items : [];
       const icons = items.length ? items : [];
       const iconSize = Math.max(20, Number(block.props.iconSize || 32));
       const gap = Math.max(4, Number(block.props.gap || 12));
-      return `<div style="text-align:${align};"><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>${icons.map((item) => {
+      return wrapEmailBlock(`<div style="text-align:${align};"><table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 auto;"><tr>${icons.map((item) => {
         const meta = getSocialIconMeta(item.network);
         const imageMarkup = meta.iconUrl
           ? `<img src="${escapeHtml(meta.iconUrl)}" alt="${escapeHtml(meta.label)}" style="display:block;width:${Math.round(iconSize)}px;height:${Math.round(iconSize)}px;object-fit:contain;border-radius:999px;background:#fff;" />`
           : `<span style="display:flex;width:${Math.round(iconSize)}px;height:${Math.round(iconSize)}px;border-radius:999px;background:${meta.color || "#334155"};color:#fff;align-items:center;justify-content:center;text-decoration:none;font-size:${Math.max(9, Math.round(iconSize * 0.33))}px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;">${escapeHtml(meta.short)}</span>`;
         return `<td style="padding:0 ${Math.round(gap / 2)}px;"><a href="${escapeHtml(item.url || "#")}" ${buildTrackingAttrs({ ...block, props: { ...block.props, section: "Social links" } }, "Social links")} style="display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border-radius:999px;box-shadow:0 6px 14px rgba(15,23,42,.08);overflow:hidden;">${imageMarkup}</a></td>`;
-      }).join("")}</tr></table></div>`;
+      }).join("")}</tr></table></div>`);
     }
     case "html":
-      return stripUnsafeHtml(block.props.html || "");
+      return wrapEmailBlock(stripUnsafeHtml(block.props.html || ""));
     case "divider":
-      return `<hr style="border:none;border-top:${Math.max(1, Number(block.props.thickness || 1))}px solid ${block.props.color || "#e5e7eb"};width:${Math.min(100, Math.max(20, Number(block.props.width || 100)))}%;margin:${Number(block.props.spacingTop || 16)}px auto ${Number(block.props.spacingBottom || 16)}px;" />`;
+      return wrapEmailBlock(`<hr style="border:none;border-top:${Math.max(1, Number(block.props.thickness || 1))}px solid ${block.props.color || "#e5e7eb"};width:${Math.min(100, Math.max(20, Number(block.props.width || 100)))}%;margin:${Number(block.props.spacingTop || 16)}px auto ${Number(block.props.spacingBottom || 16)}px;" />`);
     case "product": {
       const p = getCatalogProduct((block.props.productIds || [])[0]);
-      if (!p) return `<div style="padding:20px;border:1px dashed #cbd5e1;border-radius:18px;color:#64748b;">No product selected</div>`;
-      return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 auto 16px;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff;"><tr><td width="180" style="padding:0;vertical-align:top;">${block.props.showImage !== false ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" style="display:block;width:100%;height:180px;object-fit:cover;" />` : ""}</td><td style="padding:18px;vertical-align:top;"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8;font-weight:700;font-family:${paragraphFont};">Product</div>${block.props.showTitle !== false ? `<div style="margin-top:8px;font-size:18px;line-height:1.35;font-weight:700;color:#0f172a;font-family:${paragraphFont};">${escapeHtml(p.name)}</div>` : ""}${block.props.showPrice !== false ? `<div style="margin-top:12px;font-size:18px;font-weight:700;color:${settings.buttons.backgroundColor || "#111827"};">${money(p.price)}${block.props.showCompareAt && p.compareAtPrice ? `<span style="margin-left:8px;color:#94a3b8;text-decoration:line-through;">${money(p.compareAtPrice)}</span>` : ""}</div>` : ""}${block.props.showButton !== false ? `<div style="margin-top:16px;"><span style="display:inline-block;background:${settings.buttons.backgroundColor || "#111827"};color:${settings.buttons.fontColor || "#ffffff"};padding:10px 16px;border-radius:10px;font-size:14px;font-weight:700;font-family:${paragraphFont};">${escapeHtml(block.props.ctaLabel || "View product")}</span></div>` : ""}</td></tr></table>`;
+      if (!p) return wrapEmailBlock(`<div style="padding:20px;border:1px dashed #cbd5e1;border-radius:18px;color:#64748b;">No product selected</div>`);
+      return wrapEmailBlock(`<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 auto 16px;border:1px solid #e5e7eb;border-radius:18px;overflow:hidden;background:#fff;"><tr><td width="180" style="padding:0;vertical-align:top;">${block.props.showImage !== false ? `<img src="${escapeHtml(p.imageUrl)}" alt="${escapeHtml(p.name)}" style="display:block;width:100%;height:180px;object-fit:cover;" />` : ""}</td><td style="padding:18px;vertical-align:top;"><div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#94a3b8;font-weight:700;font-family:${paragraphFont};">Product</div>${block.props.showTitle !== false ? `<div style="margin-top:8px;font-size:18px;line-height:1.35;font-weight:700;color:#0f172a;font-family:${paragraphFont};">${escapeHtml(p.name)}</div>` : ""}${block.props.showPrice !== false ? `<div style="margin-top:12px;font-size:18px;font-weight:700;color:${settings.buttons.backgroundColor || "#111827"};">${money(p.price)}${block.props.showCompareAt && p.compareAtPrice ? `<span style="margin-left:8px;color:#94a3b8;text-decoration:line-through;">${money(p.compareAtPrice)}</span>` : ""}</div>` : ""}${block.props.showButton !== false ? `<div style="margin-top:16px;"><span style="display:inline-block;background:${settings.buttons.backgroundColor || "#111827"};color:${settings.buttons.fontColor || "#ffffff"};padding:10px 16px;border-radius:10px;font-size:14px;font-weight:700;font-family:${paragraphFont};">${escapeHtml(block.props.ctaLabel || "View product")}</span></div>` : ""}</td></tr></table>`);
     }
     case "navigation": {
       const items = Array.isArray(block.props.items) ? block.props.items : [];
-      return `<nav style="text-align:${align};font-family:${paragraphFont};font-size:${Number(block.props.fontSize || 14)}px;color:${block.props.color || "#111827"};"><div style="display:inline-flex;flex-wrap:wrap;gap:${Number(block.props.gap || 20)}px;justify-content:${align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start"};">${items.map((item) => `<a href="${escapeHtml(item.url || "#")}" ${buildTrackingAttrs(block, "Navigation links")} style="color:${block.props.color || "#111827"};text-decoration:none;font-weight:600;">${escapeHtml(item.label || "Link")}</a>`).join("")}</div></nav>`;
+      return wrapEmailBlock(`<nav style="text-align:${align};font-family:${paragraphFont};font-size:${Number(block.props.fontSize || 14)}px;color:${block.props.color || "#111827"};"><div style="display:inline-flex;flex-wrap:wrap;gap:${Number(block.props.gap || 20)}px;justify-content:${align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start"};">${items.map((item) => `<a href="${escapeHtml(item.url || "#")}" ${buildTrackingAttrs(block, "Navigation links")} style="color:${block.props.color || "#111827"};text-decoration:none;font-weight:600;">${escapeHtml(item.label || "Link")}</a>`).join("")}</div></nav>`);
     }
     case "spacer":
       return `<div style="height:${Number(block.props.height || 24)}px;"></div>`;
@@ -1991,12 +1999,12 @@ function EmailBuilderPage() {
       });
 
       const next = {
-        ...createInitialForm("html"),
+        ...createInitialForm("builder"),
         name: preset.name,
         subject: preset.subject,
         previewText: preset.previewText,
         blocks: presetBlocks,
-        advancedHtml: buildPresetTemplateHtml(normalizedPreset),
+        advancedHtml: "",
       };
 
       setForm(next);
@@ -2013,7 +2021,7 @@ function EmailBuilderPage() {
         const { data } = await api.get(`/templates/${id}`);
         const mapped = await normalizeTemplateImageUrls(mapTemplateToForm(data, initialMode));
         setForm(mapped);
-        setShowAdvanced(Boolean(mapped.advancedHtml?.trim()) || initialMode === "html");
+        setShowAdvanced(initialMode === "html" || (!mapped.blocks.length && Boolean(mapped.advancedHtml?.trim())));
         setLastSavedSignature(JSON.stringify(mapped));
       } catch (requestError) {
         setError(requestError.response?.data?.message || "Unable to load template");

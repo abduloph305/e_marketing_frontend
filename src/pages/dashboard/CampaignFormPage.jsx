@@ -35,9 +35,92 @@ const createInitialForm = () => ({
   recurrenceUnit: "week",
 });
 
-const FormField = ({ label, className = "", children }) => (
+const campaignHelperText = {
+  name: "Internal name for this campaign. Customers will not see this.",
+  type: "Choose how this campaign should behave, like one-time broadcast or lifecycle campaign.",
+  goal: "Select the main purpose of this campaign, so reports are easier to understand later.",
+  status: "Choose whether this campaign should stay draft, be scheduled, or become active.",
+  subject: "This is the email title customers see in their inbox. Keep it clear and short.",
+  previewText: "Small text shown beside the subject in inboxes. Use it to add a quick reason to open.",
+  fromName: "Name customers will see as the sender of the email.",
+  fromEmail: "Email address used to send this campaign. Use a trusted business email.",
+  replyTo: "Optional email where customer replies should go. Leave blank if replies can use the sender email.",
+  sendTime: "Choose when this campaign should be sent. For recurring campaigns, this is the first send time.",
+  template: "Pick the email design and content that will be sent in this campaign.",
+  audience: "Choose who should receive this campaign. Leave blank to send to all subscribers.",
+  recurring: "Turn this on if this campaign should send again automatically on a schedule.",
+  repeatEvery: "Set how often the recurring campaign should run, like every 1 day, week, or month.",
+};
+
+const HelpTooltip = ({ text }) => {
+  const [position, setPosition] = useState(null);
+  const tooltipId = useMemo(
+    () => `campaign-help-${text.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    [text],
+  );
+
+  const showTooltip = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const tooltipWidth = Math.min(288, window.innerWidth - 32);
+    const x = Math.min(
+      Math.max(rect.left + rect.width / 2, 16 + tooltipWidth / 2),
+      window.innerWidth - 16 - tooltipWidth / 2,
+    );
+    const estimatedHeight = 76;
+    const shouldOpenAbove =
+      rect.bottom + 8 + estimatedHeight > window.innerHeight;
+
+    setPosition({
+      left: x,
+      top: shouldOpenAbove ? rect.top - 8 : rect.bottom + 8,
+      translateY: shouldOpenAbove ? "-100%" : "0",
+      width: tooltipWidth,
+    });
+  };
+
+  return (
+    <span
+      className="relative inline-flex"
+      onFocus={showTooltip}
+      onMouseEnter={showTooltip}
+      onBlur={() => setPosition(null)}
+      onMouseLeave={() => setPosition(null)}
+    >
+      <span
+        aria-describedby={position ? tooltipId : undefined}
+        aria-label={text}
+        className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[#cfc6e8] bg-white text-[10px] font-bold leading-none text-[#6e6787] shadow-sm transition hover:border-[#9f8df2] hover:text-[#4f46e5]"
+        role="button"
+        tabIndex={0}
+      >
+        ?
+      </span>
+      {position ? (
+        <span
+          className="fixed z-[1000] rounded-xl border border-[#ddd4f2] bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-[#5f5878] shadow-[0_16px_36px_rgba(47,43,61,0.18)]"
+          id={tooltipId}
+          role="tooltip"
+          style={{
+            left: position.left,
+            top: position.top,
+            width: position.width,
+            transform: `translate(-50%, ${position.translateY})`,
+            whiteSpace: "normal",
+          }}
+        >
+          {text}
+        </span>
+      ) : null}
+    </span>
+  );
+};
+
+const FormField = ({ label, help, className = "", children }) => (
   <label className={`block space-y-2 ${className}`}>
-    <span className="text-sm font-semibold text-[#2f2b3d]">{label}</span>
+    <span className="flex items-center gap-1.5 text-sm font-semibold text-[#2f2b3d]">
+      <span>{label}</span>
+      {help ? <HelpTooltip text={help} /> : null}
+    </span>
     {children}
   </label>
 );
@@ -392,14 +475,14 @@ function CampaignFormPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)] xl:items-start">
         <form
-          className="shell-card-strong space-y-6 p-6"
+          className="shell-card-strong space-y-6 overflow-visible p-6"
           onSubmit={(event) => {
             event.preventDefault();
             saveCampaign(form.status || "draft");
           }}
         >
           <div className="grid gap-4 md:grid-cols-2 ">
-            <FormField label="Campaign name">
+            <FormField label="Campaign name" help={campaignHelperText.name}>
               <input
                 className="field"
                 placeholder="For example: April product update"
@@ -413,7 +496,7 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="Campaign type">
+            <FormField label="Campaign type" help={campaignHelperText.type}>
               <select
                 className="field"
                 value={form.type}
@@ -436,7 +519,7 @@ function CampaignFormPage() {
               </select>
             </FormField>
 
-            <FormField label="Campaign goal">
+            <FormField label="Campaign goal" help={campaignHelperText.goal}>
               <select
                 className="field"
                 value={form.goal}
@@ -456,7 +539,7 @@ function CampaignFormPage() {
               </select>
             </FormField>
 
-            <FormField label="Send status">
+            <FormField label="Send status" help={campaignHelperText.status}>
               <select
                 className="field"
                 value={form.status}
@@ -478,7 +561,11 @@ function CampaignFormPage() {
               </select>
             </FormField>
 
-            <FormField label="Subject line" className="md:col-span-2">
+            <FormField
+              label="Subject line"
+              help={campaignHelperText.subject}
+              className="md:col-span-2"
+            >
               <input
                 className="field"
                 placeholder="For example: A quick update from SellersLogin"
@@ -492,7 +579,11 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="Preview text" className="md:col-span-2">
+            <FormField
+              label="Preview text"
+              help={campaignHelperText.previewText}
+              className="md:col-span-2"
+            >
               <input
                 className="field"
                 placeholder="For example: One small update and a helpful link"
@@ -506,7 +597,7 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="From name">
+            <FormField label="From name" help={campaignHelperText.fromName}>
               <input
                 className="field"
                 placeholder="For example: SellersLogin"
@@ -520,7 +611,7 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="From email">
+            <FormField label="From email" help={campaignHelperText.fromEmail}>
               <input
                 className="field"
                 placeholder="For example: support@sellerslogin.com"
@@ -535,7 +626,7 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="Reply-to">
+            <FormField label="Reply-to" help={campaignHelperText.replyTo}>
               <input
                 className="field"
                 placeholder="Optional reply email"
@@ -552,6 +643,7 @@ function CampaignFormPage() {
 
             <FormField
               label={form.isRecurring ? "First send time" : "Send time"}
+              help={campaignHelperText.sendTime}
             >
               <input
                 className="field"
@@ -566,7 +658,7 @@ function CampaignFormPage() {
               />
             </FormField>
 
-            <FormField label="Template">
+            <FormField label="Template" help={campaignHelperText.template}>
               <select
                 className="field"
                 value={form.templateId}
@@ -586,7 +678,7 @@ function CampaignFormPage() {
               </select>
             </FormField>
 
-            <FormField label="Audience">
+            <FormField label="Audience" help={campaignHelperText.audience}>
               <div className="space-y-2">
                 <select
                   className="field"
@@ -613,11 +705,12 @@ function CampaignFormPage() {
             </FormField>
 
             {!isBroadcastCampaign ? (
-              <div className="md:col-span-2 rounded-[24px] border border-[#ece6f8] bg-[#faf7ff] p-5">
+              <div className="md:col-span-2 overflow-visible rounded-[24px] border border-[#ece6f8] bg-[#faf7ff] p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-[#2f2b3d]">
-                      Recurring campaign
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-[#2f2b3d]">
+                      <span>Recurring campaign</span>
+                      <HelpTooltip text={campaignHelperText.recurring} />
                     </p>
                     <p className="mt-1 text-sm text-[#6e6787]">
                       {formatRecurrenceLabel(
@@ -647,7 +740,10 @@ function CampaignFormPage() {
 
                 {form.isRecurring ? (
                   <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr]">
-                    <FormField label="Repeat every">
+                    <FormField
+                      label="Repeat every"
+                      help={campaignHelperText.repeatEvery}
+                    >
                       <div className="grid gap-3 md:grid-cols-[120px_1fr]">
                         <input
                           className="field"

@@ -61,8 +61,6 @@ export default function AutomationPreviewTestModal({
   const [tab, setTab] = useState("preview");
   const [viewportMode, setViewportMode] = useState("desktop");
   const [recipientEmails, setRecipientEmails] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
@@ -73,8 +71,6 @@ export default function AutomationPreviewTestModal({
     setTab("preview");
     setViewportMode("desktop");
     setRecipientEmails("");
-    setFirstName("");
-    setLastName("");
     setIsSending(false);
   }, [open, workflow?._id]);
 
@@ -91,11 +87,7 @@ export default function AutomationPreviewTestModal({
 
     setIsSending(true);
     try {
-      await onRunSample({
-        emails,
-        firstName,
-        lastName,
-      });
+      await onRunSample({ emails });
     } finally {
       setIsSending(false);
     }
@@ -265,32 +257,10 @@ export default function AutomationPreviewTestModal({
                     value={recipientEmails}
                     onChange={(event) => setRecipientEmails(event.target.value)}
                   />
-                  <p className="mt-2 text-xs text-slate-500">
-                    Paste multiple addresses separated by commas or new lines.
-                  </p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-900">First name</label>
-                    <input
-                      className="field"
-                      type="text"
-                      placeholder="Preview"
-                      value={firstName}
-                      onChange={(event) => setFirstName(event.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-slate-900">Last name</label>
-                    <input
-                      className="field"
-                      type="text"
-                      placeholder="Recipient"
-                      value={lastName}
-                      onChange={(event) => setLastName(event.target.value)}
-                    />
-                  </div>
-                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Paste multiple addresses separated by commas or new lines.
+                </p>
+              </div>
                 <button
                   type="button"
                   className="rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -306,7 +276,7 @@ export default function AutomationPreviewTestModal({
               <div className="space-y-3">
                 <h4 className="text-[20px] font-semibold tracking-tight text-slate-900">Test execution</h4>
                 <p className="text-sm leading-6 text-slate-500">
-                  This runs a sample automation execution using the current workflow and sends the email step to the address you enter.
+                  This sends the selected email template directly to the recipient addresses you enter, without creating an automation run.
                 </p>
               </div>
             </aside>

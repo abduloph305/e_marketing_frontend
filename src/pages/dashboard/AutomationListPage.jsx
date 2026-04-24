@@ -31,6 +31,8 @@ function AutomationListPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [actionMenuWorkflowId, setActionMenuWorkflowId] = useState(null)
+  const [workflowPendingDelete, setWorkflowPendingDelete] = useState(null)
+  const [isDeletingWorkflow, setIsDeletingWorkflow] = useState(false)
   const actionMenuRef = useRef(null)
 
   const loadWorkflows = async (page = 1, nextStatus = statusTab, nextFilters = filters) => {
@@ -85,6 +87,32 @@ function AutomationListPage() {
     }
   }
 
+  const handleDeleteWorkflow = async (workflow) => {
+    setWorkflowPendingDelete(workflow)
+  }
+
+  const confirmDeleteWorkflow = async () => {
+    if (!workflowPendingDelete?._id) {
+      return
+    }
+
+    setIsDeletingWorkflow(true)
+    try {
+      await api.delete(`/automations/${workflowPendingDelete._id}`)
+      toast.success('Workflow deleted')
+
+      const nextPage =
+        workflows.length === 1 && pagination.page > 1 ? pagination.page - 1 : pagination.page
+
+      loadWorkflows(nextPage)
+      setWorkflowPendingDelete(null)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Unable to delete workflow')
+    } finally {
+      setIsDeletingWorkflow(false)
+    }
+  }
+
   const handleChooseReadyMade = () => {
     setShowCreateChooser(false)
     setShowRecipeGallery(true)
@@ -115,7 +143,7 @@ function AutomationListPage() {
     }
   }
 
-  const handleRunSampleExecution = async ({ emails, firstName, lastName }) => {
+  const handleRunSampleExecution = async ({ emails }) => {
     if (!previewWorkflow?._id) {
       toast.error('Workflow preview is not ready')
       return
@@ -133,13 +161,11 @@ function AutomationListPage() {
     try {
       await api.post(`/automations/${previewWorkflow._id}/sample-execution`, {
         emails: recipientEmails,
-        firstName,
-        lastName,
       })
       toast.success('Test email sent')
       setShowPreviewModal(false)
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Unable to process sample execution')
+      toast.error(error.response?.data?.message || 'Unable to send test email')
     }
   }
 
@@ -324,6 +350,17 @@ function AutomationListPage() {
                               >
                                 Logs
                               </Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="block w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+                                onClick={() => {
+                                  setActionMenuWorkflowId(null)
+                                  handleDeleteWorkflow(workflow)
+                                }}
+                              >
+                                Delete
+                              </button>
                             </div>
                           ) : null}
                         </div>
@@ -459,6 +496,46 @@ function AutomationListPage() {
         }}
         onRunSample={handleRunSampleExecution}
       />
+
+      {workflowPendingDelete ? (
+        <Modal
+          title="Delete workflow"
+          description={`Are you sure you want to delete "${workflowPendingDelete.name}"? This will remove the workflow, its steps, executions, and logs.`}
+          onClose={() => {
+            if (!isDeletingWorkflow) {
+              setWorkflowPendingDelete(null)
+            }
+          }}
+          className="max-w-lg"
+          bodyClassName="flex flex-col gap-5"
+        >
+          <div className="flex flex-col gap-3 rounded-3xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-900">
+            <p className="font-semibold">This action cannot be undone.</p>
+            <p className="leading-6">
+              Deleting the workflow removes its automation logic, related runs, and audit logs from the workspace.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              onClick={() => setWorkflowPendingDelete(null)}
+              disabled={isDeletingWorkflow}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              onClick={confirmDeleteWorkflow}
+              disabled={isDeletingWorkflow}
+            >
+              {isDeletingWorkflow ? 'Deleting...' : 'Yes, delete'}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   )
 }
