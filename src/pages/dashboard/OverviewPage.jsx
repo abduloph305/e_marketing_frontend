@@ -5,6 +5,7 @@ import EmptyState from '../../components/ui/EmptyState.jsx'
 import LoadingState from '../../components/ui/LoadingState.jsx'
 import PageHeader from '../../components/ui/PageHeader.jsx'
 import { api } from '../../lib/api.js'
+import { formatCurrency } from '../../lib/formatters.js'
 
 const presetOptions = [
   { id: 'today', label: 'Today' },
@@ -178,13 +179,13 @@ function OverviewPage() {
     },
     {
       title: 'Revenue',
-      value: `$${Number(overview.revenueGenerated || 0).toLocaleString()}`,
+      value: formatCurrency(overview.revenueGenerated || 0),
       hint:
         overview.roiPercent === null || overview.roiPercent === undefined
           ? 'Attribution ready'
           : `ROI ${Number(overview.roiPercent || 0).toFixed(2)}%`,
       tone: 'emerald',
-      icon: '$',
+      icon: '₹',
     },
     {
       title: 'Conversions',

@@ -14,6 +14,7 @@ import {
   toDateTimeLocalInput,
   toIsoStringFromLocalInput,
 } from "../../lib/datetime.js";
+import { formatCurrency } from "../../lib/formatters.js";
 
 const formatDateTime = (value) =>
   value
@@ -256,7 +257,7 @@ function CampaignDetailsPage() {
       ["Complaints", totals.complaints || 0],
       ["Unsubscribed", totals.unsubscribes || 0],
       ["Conversions", totals.conversions || 0],
-      ["Revenue", `$${Number(totals.revenue || 0).toFixed(2)}`],
+      ["Revenue", formatCurrency(totals.revenue || 0)],
     ];
   }, [campaign]);
 
@@ -895,7 +896,7 @@ function CampaignDetailsPage() {
               Conversions attributed
             </p>
             <p className="mt-6 text-xl font-semibold text-[#2f2b3d]">
-              ${Number(campaign.totals?.revenue || 0).toFixed(2)}
+              {formatCurrency(campaign.totals?.revenue || 0)}
             </p>
             <p className="mt-2 text-[12px] text-[#6e6787]">
               Revenue attributed

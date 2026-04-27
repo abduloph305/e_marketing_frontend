@@ -5,6 +5,7 @@ import PageHeader from "../../components/ui/PageHeader.jsx";
 import StatCard from "../../components/ui/StatCard.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { api } from "../../lib/api.js";
+import { formatCurrency } from "../../lib/formatters.js";
 
 const initialReportState = {
   selectedRange: { range: "30d", label: "Last 30 days" },
@@ -38,9 +39,6 @@ const formatRate = (numerator, denominator) =>
   denominator ? `${((numerator / denominator) * 100).toFixed(2)}%` : "0.00%";
 
 const formatPercentValue = (value) => `${Number(value || 0).toFixed(2)}%`;
-
-const formatCurrency = (value) =>
-  `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 function ReportsPage() {
   const toast = useContext(ToastContext);

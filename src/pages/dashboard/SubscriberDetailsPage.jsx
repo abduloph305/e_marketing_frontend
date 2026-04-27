@@ -7,11 +7,22 @@ import StatusBadge from "../../components/ui/StatusBadge.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { subscriberStatuses } from "../../data/audience.js";
 import { api } from "../../lib/api.js";
+import { formatCurrency } from "../../lib/formatters.js";
 
 const formatLabel = (value) =>
   String(value || "")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const formatDeviceType = (value) => {
+  const deviceType = String(value || "").trim();
+
+  if (!deviceType) {
+    return "Unknown";
+  }
+
+  return formatLabel(deviceType);
+};
 
 const getEngagementTier = (score = 0) => {
   const value = Number(score || 0);
@@ -164,7 +175,7 @@ function SubscriberDetailsPage() {
         .join(", ") || "Not set",
     ],
     ["Total orders", subscriber.totalOrders],
-    ["Total spent", `$${Number(subscriber.totalSpent || 0).toFixed(2)}`],
+    ["Total spent", formatCurrency(subscriber.totalSpent || 0)],
   ];
 
   const engagementFields = [
@@ -194,9 +205,21 @@ function SubscriberDetailsPage() {
         : "Never",
     ],
     [
+      "Last open device",
+      subscriber.engagementDevices?.lastOpen
+        ? formatDeviceType(subscriber.engagementDevices.lastOpen.deviceType)
+        : "Never",
+    ],
+    [
       "Last click",
       subscriber.lastClickAt
         ? new Date(subscriber.lastClickAt).toLocaleString()
+        : "Never",
+    ],
+    [
+      "Last click device",
+      subscriber.engagementDevices?.lastClick
+        ? formatDeviceType(subscriber.engagementDevices.lastClick.deviceType)
         : "Never",
     ],
   ];
@@ -432,7 +455,7 @@ function SubscriberDetailsPage() {
                           : "Not sent"}
                       </td>
                       <td className="px-6 py-4 text-[#6e6787]">
-                        ${Number(item.revenueAttributed || 0).toFixed(2)}
+                        {formatCurrency(item.revenueAttributed || 0)}
                       </td>
                     </tr>
                   ))}

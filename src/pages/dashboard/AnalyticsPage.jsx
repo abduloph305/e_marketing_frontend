@@ -6,6 +6,7 @@ import LoadingState from '../../components/ui/LoadingState.jsx'
 import PageHeader from '../../components/ui/PageHeader.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
 import { api } from '../../lib/api.js'
+import { formatCurrency } from '../../lib/formatters.js'
 
 const initialFilters = {
   startDate: '',
@@ -13,8 +14,6 @@ const initialFilters = {
 }
 
 const formatPercent = (value) => `${Number(value || 0).toFixed(2)}%`
-const formatCurrency = (value) =>
-  `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 
 function AnalyticsPage() {
   const [filters, setFilters] = useState(initialFilters)

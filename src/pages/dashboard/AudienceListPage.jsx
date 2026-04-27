@@ -7,6 +7,7 @@ import PageHeader from "../../components/ui/PageHeader.jsx";
 import StatusBadge from "../../components/ui/StatusBadge.jsx";
 import { ToastContext } from "../../context/ToastContext.jsx";
 import { api } from "../../lib/api.js";
+import { formatCurrency } from "../../lib/formatters.js";
 
 const initialFilters = {
   search: "",
@@ -67,8 +68,6 @@ const formatSourceLocation = (subscriber) => {
     )
     .join(" • ");
 };
-
-const formatCurrency = (value) => `$${Number(value || 0).toFixed(2)}`;
 
 const parseCsvPreview = (content = "") => {
   const lines = content
@@ -829,7 +828,7 @@ function AudienceListPage() {
                       <td className="px-6 py-5 text-[#5f5878]">
                         <p>{subscriber.totalOrders} orders</p>
                         <p className="mt-2 text-xs text-[#9a94b2]">
-                          ${Number(subscriber.totalSpent || 0).toFixed(2)} total
+                          {formatCurrency(subscriber.totalSpent || 0)} total
                           spent
                         </p>
                       </td>
