@@ -90,6 +90,14 @@
     permission: "view_reports",
   },
   {
+    label: "Billing / Plan",
+    path: "/billing",
+    description: "Review plan limits, email usage, subscription status, and invoices.",
+    group: "Workspace",
+    icon: "billing",
+    permission: "view_billing",
+  },
+  {
     label: "Invite Users",
     path: "/team-users",
     description: "Grant limited dashboard access to teammates and collaborators.",

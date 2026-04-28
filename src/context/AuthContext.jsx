@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useEffect, useState } from 'react'
 import { canAccess } from '../data/permissions.js'
 import { api, setAuthToken } from '../lib/api.js'
@@ -27,8 +28,8 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     const { data } = await api.post('/auth/login', credentials)
     setAuthToken(data.token)
-    setAdmin(data.admin)
-    return data.admin
+    setAdmin(data.user || data.admin)
+    return data.user || data.admin
   }
 
   const logout = async () => {
@@ -41,7 +42,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ admin, isLoading, login, logout, can: (permission) => canAccess(admin, permission) }}>
+    <AuthContext.Provider value={{ admin, user: admin, isLoading, login, logout, can: (permission) => canAccess(admin, permission) }}>
       {children}
     </AuthContext.Provider>
   )
