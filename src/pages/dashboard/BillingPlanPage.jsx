@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
+import { Download, Eye } from 'lucide-react'
 import PageHeader from '../../components/ui/PageHeader.jsx'
 import StatCard from '../../components/ui/StatCard.jsx'
 import { ToastContext } from '../../context/ToastContext.jsx'
@@ -181,6 +182,7 @@ function BillingPlanPage() {
   const [invoices, setInvoices] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [busyKey, setBusyKey] = useState('')
+  const [invoiceBusyKey, setInvoiceBusyKey] = useState('')
 
   const loadBilling = async () => {
     setIsLoading(true)
@@ -254,6 +256,53 @@ function BillingPlanPage() {
     } catch (error) {
       toast.error(error.response?.data?.message || error.message || 'Unable to start payment')
       setBusyKey('')
+    }
+  }
+
+  const openInvoice = async (invoice) => {
+    const key = `${invoice._id}:view`
+    setInvoiceBusyKey(key)
+    const invoiceWindow = window.open('', '_blank', 'noopener,noreferrer')
+
+    try {
+      const response = await api.get(`/billing/me/invoices/${invoice._id}`, {
+        responseType: 'blob',
+      })
+      const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'text/html' }))
+      if (invoiceWindow) {
+        invoiceWindow.location.href = blobUrl
+      } else {
+        window.open(blobUrl, '_blank', 'noopener,noreferrer')
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+    } catch (error) {
+      invoiceWindow?.close()
+      toast.error(error.response?.data?.message || 'Unable to open invoice')
+    } finally {
+      setInvoiceBusyKey('')
+    }
+  }
+
+  const downloadInvoice = async (invoice) => {
+    const key = `${invoice._id}:download`
+    setInvoiceBusyKey(key)
+
+    try {
+      const response = await api.get(`/billing/me/invoices/${invoice._id}/download`, {
+        responseType: 'blob',
+      })
+      const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const anchor = document.createElement('a')
+      anchor.href = blobUrl
+      anchor.download = `SellersLogin-${invoice.invoiceNumber}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Unable to download invoice')
+    } finally {
+      setInvoiceBusyKey('')
     }
   }
 
@@ -422,7 +471,7 @@ function BillingPlanPage() {
       <section className="shell-card-strong overflow-hidden">
         <div className="border-b border-[#eee9f8] px-5 py-4">
           <h3 className="text-[18px] font-semibold text-[#21192d]">Invoices</h3>
-          <p className="mt-1 text-sm text-[#7b7592]">Payment and GST invoice records for this workspace.</p>
+          {/* <p className="mt-1 text-sm text-[#7b7592]">Payment and GST invoice records for this workspace.</p> */}
         </div>
         {invoices.length ? (
           <div className="overflow-x-auto">
@@ -434,6 +483,7 @@ function BillingPlanPage() {
                   <th className="px-5 py-3 font-medium">Total</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Issued</th>
+                  <th className="px-5 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#eee9f8]">
@@ -444,6 +494,20 @@ function BillingPlanPage() {
                     <td className="px-5 py-4 font-semibold text-[#21192d]">{formatCurrency(invoice.total, invoice.currency)}</td>
                     <td className="px-5 py-4 text-[#7b7592]">{invoice.status}</td>
                     <td className="px-5 py-4 text-[#7b7592]">{formatDate(invoice.issuedAt)}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                       
+                        <button
+                          type="button"
+                          title="Download invoice"
+                          disabled={Boolean(invoiceBusyKey)}
+                          onClick={() => downloadInvoice(invoice)}
+                          className="inline-flex h-9 w-9 items-center justify-center border border-[#8338ec] bg-[#8338ec] text-white hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

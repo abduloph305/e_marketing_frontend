@@ -19,6 +19,12 @@ const createInitialForm = () => ({
   trigger: 'welcome_signup',
   status: 'draft',
   entrySegmentId: '',
+  websiteScope: {
+    websiteId: '',
+    websiteSlug: '',
+    websiteName: '',
+    label: '',
+  },
   triggerConfig: {
     delayWindow: '',
     notes: '',
@@ -156,6 +162,42 @@ function FieldLabel({ label, help }) {
     </div>
   )
 }
+
+const emptyWebsiteScope = {
+  websiteId: '',
+  websiteSlug: '',
+  websiteName: '',
+  label: '',
+}
+
+const normalizeWebsiteScope = (scope = {}) => ({
+  websiteId: String(scope.websiteId || scope.website_id || '').trim(),
+  websiteSlug: String(scope.websiteSlug || scope.website_slug || '').trim(),
+  websiteName: String(scope.websiteName || scope.website_name || '').trim(),
+  label: String(
+    scope.label ||
+      scope.websiteName ||
+      scope.website_name ||
+      scope.websiteSlug ||
+      scope.website_slug ||
+      scope.websiteId ||
+      scope.website_id ||
+      '',
+  ).trim(),
+})
+
+const getWebsiteOptionScope = (website = {}) => ({
+  websiteId: website.websiteId || '',
+  websiteSlug: website.websiteSlug || '',
+  websiteName: website.websiteName || '',
+  label: website.label || website.websiteName || website.websiteSlug || website.websiteId || '',
+})
+
+const hasWebsiteScope = (scope = {}) =>
+  Boolean(scope.websiteId || scope.websiteSlug || scope.websiteName)
+
+const getWebsiteScopeKey = (scope = {}) =>
+  [scope.websiteId || '', scope.websiteSlug || '', scope.websiteName || ''].join('::')
 
 function StepEditor({ step, index, templates, onChange, onRemove }) {
   return (
@@ -406,6 +448,7 @@ function AutomationFormPage() {
   const toast = useContext(ToastContext)
   const [form, setForm] = useState(createInitialForm())
   const [meta, setMeta] = useState({ triggers: [], statuses: [], templates: [], segments: [], ecommerceHooks: null })
+  const [websites, setWebsites] = useState([])
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -416,24 +459,34 @@ function AutomationFormPage() {
     () => dripCampaignPresets.find((preset) => preset.key === presetKey) || null,
     [presetKey],
   )
+  const selectedWebsiteScope = normalizeWebsiteScope(form.websiteScope)
+  const selectedWebsiteKey = getWebsiteScopeKey(selectedWebsiteScope)
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [metaResponse, workflowResponse] = await Promise.all([
+        const [metaResponse, workflowResponse, summaryResponse] = await Promise.all([
           api.get('/automations/meta'),
           id ? api.get(`/automations/${id}`) : Promise.resolve({ data: null }),
+          api.get('/subscribers/summary'),
         ])
 
         setMeta(metaResponse.data)
+        const websiteOptions = summaryResponse.data?.websites || []
+        const defaultWebsiteScope = websiteOptions[0] ? getWebsiteOptionScope(websiteOptions[0]) : emptyWebsiteScope
+        setWebsites(websiteOptions)
 
         if (workflowResponse.data) {
+          const savedWebsiteScope = normalizeWebsiteScope(
+            workflowResponse.data.websiteScope || workflowResponse.data.entrySegmentId?.websiteScope || {},
+          )
           setForm({
             name: workflowResponse.data.name || '',
             description: workflowResponse.data.description || '',
             trigger: workflowResponse.data.trigger || 'welcome_signup',
             status: workflowResponse.data.status || 'draft',
-            entrySegmentId: workflowResponse.data.entrySegmentId?._id || '',
+            entrySegmentId: '',
+            websiteScope: hasWebsiteScope(savedWebsiteScope) ? savedWebsiteScope : defaultWebsiteScope,
             triggerConfig: {
               delayWindow: workflowResponse.data.triggerConfig?.delayWindow || '',
               notes: workflowResponse.data.triggerConfig?.notes || '',
@@ -445,8 +498,21 @@ function AutomationFormPage() {
           const nextPreset = buildDripCampaignPreset(selectedPreset.key, presetTemplateId)
 
           if (nextPreset) {
-            setForm(nextPreset)
+            setForm({
+              ...createInitialForm(),
+              ...nextPreset,
+              websiteScope: hasWebsiteScope(normalizeWebsiteScope(nextPreset.websiteScope || {}))
+                ? normalizeWebsiteScope(nextPreset.websiteScope || {})
+                : defaultWebsiteScope,
+            })
           }
+        } else {
+          setForm((current) => ({
+            ...current,
+            websiteScope: hasWebsiteScope(normalizeWebsiteScope(current.websiteScope))
+              ? current.websiteScope
+              : defaultWebsiteScope,
+          }))
         }
       } catch (requestError) {
         setError(requestError.response?.data?.message || 'Unable to load workflow editor')
@@ -492,6 +558,10 @@ function AutomationFormPage() {
       return 'Add at least one step to this workflow'
     }
 
+    if (!hasWebsiteScope(normalizeWebsiteScope(form.websiteScope))) {
+      return 'Select a website audience'
+    }
+
     return ''
   }
 
@@ -512,7 +582,8 @@ function AutomationFormPage() {
         ...form,
         status: nextStatus,
         isActive: nextStatus === 'active',
-        entrySegmentId: form.entrySegmentId || null,
+        entrySegmentId: null,
+        websiteScope: normalizeWebsiteScope(form.websiteScope || {}),
       }
 
       if (id) {
@@ -689,19 +760,33 @@ function AutomationFormPage() {
                 </select>
               </div>
               <div>
-                <FieldLabel label="Audience" help="Choose who can enter this workflow." />
-                <select
-                  className="field"
-                  value={form.entrySegmentId}
-                  onChange={(event) => setForm((current) => ({ ...current, entrySegmentId: event.target.value }))}
-                >
-                  <option value="">All eligible subscribers</option>
-                  {meta.segments.map((segment) => (
-                    <option key={segment._id} value={segment._id}>
-                      {segment.name}
-                    </option>
-                  ))}
-                </select>
+                <FieldLabel label="Audience" help="Choose your website to enter this workflow." />
+                <div className="space-y-2">
+                  <select
+                    className="field"
+                    value={selectedWebsiteKey}
+                    onChange={(event) => {
+                      const website = websites.find((item) => item.id === event.target.value)
+                      const websiteScope = website ? getWebsiteOptionScope(website) : emptyWebsiteScope
+
+                      setForm((current) => ({
+                        ...current,
+                        websiteScope,
+                        entrySegmentId: '',
+                      }))
+                    }}
+                  >
+                    {websites.length ? (
+                      websites.map((website) => (
+                        <option key={website.id} value={website.id}>
+                          {website.label} ({website.count || 0})
+                        </option>
+                      ))
+                    ) : (
+                      <option value={getWebsiteScopeKey(emptyWebsiteScope)}>No websites found</option>
+                    )}
+                  </select>
+                </div>
               </div>
               <div>
                 <FieldLabel label="Delay window hint" help="A small note about timing, if needed." />

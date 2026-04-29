@@ -28,6 +28,12 @@ const createInitialForm = () => ({
   replyTo: "",
   templateId: "",
   segmentId: "",
+  websiteScope: {
+    websiteId: "",
+    websiteSlug: "",
+    websiteName: "",
+    label: "",
+  },
   status: "",
   scheduledAt: "",
   isRecurring: false,
@@ -47,7 +53,7 @@ const campaignHelperText = {
   replyTo: "Optional email where customer replies should go. Leave blank if replies can use the sender email.",
   sendTime: "Choose when this campaign should be sent. For recurring campaigns, this is the first send time.",
   template: "Pick the email design and content that will be sent in this campaign.",
-  audience: "Choose who should receive this campaign. Leave blank to send to all subscribers.",
+  audience: "Choose which website audience should receive this campaign.",
   recurring: "Turn this on if this campaign should send again automatically on a schedule.",
   repeatEvery: "Set how often the recurring campaign should run, like every 1 day, week, or month.",
 };
@@ -133,7 +139,34 @@ const formatRecurrenceLabel = (interval, unit) => {
   return `Every ${quantity} ${suffix}`;
 };
 
-const formatAudienceLabel = (segmentName) => segmentName || "All subscribers";
+const emptyWebsiteScope = {
+  websiteId: "",
+  websiteSlug: "",
+  websiteName: "",
+  label: "",
+};
+
+const normalizeWebsiteScope = (scope = {}) => ({
+  websiteId: String(scope.websiteId || scope.website_id || "").trim(),
+  websiteSlug: String(scope.websiteSlug || scope.website_slug || "").trim(),
+  websiteName: String(scope.websiteName || scope.website_name || "").trim(),
+  label: String(scope.label || scope.websiteName || scope.website_name || scope.websiteSlug || scope.website_slug || scope.websiteId || scope.website_id || "").trim(),
+});
+
+const getWebsiteOptionScope = (website = {}) => ({
+  websiteId: website.websiteId || "",
+  websiteSlug: website.websiteSlug || "",
+  websiteName: website.websiteName || "",
+  label: website.label || website.websiteName || website.websiteSlug || website.websiteId || "",
+});
+
+const hasWebsiteScope = (scope = {}) =>
+  Boolean(scope.websiteId || scope.websiteSlug || scope.websiteName);
+
+const getWebsiteScopeKey = (scope = {}) =>
+  [scope.websiteId || "", scope.websiteSlug || "", scope.websiteName || ""].join("::");
+
+const formatAudienceLabel = (websiteLabel = "") => websiteLabel || "Select website";
 
 const stripTags = (value = "") =>
   String(value)
@@ -204,7 +237,7 @@ function CampaignFormPage() {
   const toast = useContext(ToastContext);
   const [form, setForm] = useState(createInitialForm());
   const [templates, setTemplates] = useState([]);
-  const [segments, setSegments] = useState([]);
+  const [websites, setWebsites] = useState([]);
   const [meta, setMeta] = useState({
     types: campaignTypes,
     goals: campaignGoals,
@@ -219,9 +252,8 @@ function CampaignFormPage() {
     new URLSearchParams(location.search).get("type") === "broadcast";
   const isBroadcastCampaign =
     form.type === "broadcast" || (!id && broadcastPreset);
-  const audienceLabel = formatAudienceLabel(
-    segments.find((segment) => segment._id === form.segmentId)?.name,
-  );
+  const audienceLabel = formatAudienceLabel(normalizeWebsiteScope(form.websiteScope).label);
+  const selectedWebsiteKey = getWebsiteScopeKey(normalizeWebsiteScope(form.websiteScope));
   const selectedTemplate = useMemo(
     () => templates.find((template) => template._id === form.templateId),
     [form.templateId, templates],
@@ -234,19 +266,22 @@ function CampaignFormPage() {
   useEffect(() => {
     const loadDependencies = async () => {
       try {
-        const [metaResponse, templatesResponse, segmentsResponse] =
+        const [metaResponse, templatesResponse, summaryResponse] =
           await Promise.all([
             api.get("/campaigns/meta"),
             api.get("/templates"),
-            api.get("/segments"),
+            api.get("/subscribers/summary"),
           ]);
 
         setMeta(metaResponse.data);
         setTemplates(templatesResponse.data);
-        setSegments(segmentsResponse.data);
+        const websiteOptions = summaryResponse.data?.websites || [];
+        const defaultWebsiteScope = websiteOptions[0] ? getWebsiteOptionScope(websiteOptions[0]) : emptyWebsiteScope;
+        setWebsites(websiteOptions);
 
         if (id) {
           const { data } = await api.get(`/campaigns/${id}`);
+          const savedWebsiteScope = normalizeWebsiteScope(data.websiteScope || data.segmentId?.websiteScope || {});
           setForm({
             name: data.name || "",
             type: data.type || "promotional",
@@ -257,7 +292,8 @@ function CampaignFormPage() {
             fromEmail: data.fromEmail || "",
             replyTo: data.replyTo || "",
             templateId: data.templateId?._id || "",
-            segmentId: data.segmentId?._id || "",
+            segmentId: "",
+            websiteScope: hasWebsiteScope(savedWebsiteScope) ? savedWebsiteScope : defaultWebsiteScope,
             status: data.status || "draft",
             scheduledAt: toDateTimeLocalInput(data.scheduledAt),
             isRecurring: Boolean(data.isRecurring),
@@ -270,7 +306,17 @@ function CampaignFormPage() {
             type: "broadcast",
             goal: current.goal || "clicks",
             segmentId: "",
+            websiteScope: hasWebsiteScope(normalizeWebsiteScope(current.websiteScope))
+              ? current.websiteScope
+              : defaultWebsiteScope,
             isRecurring: false,
+          }));
+        } else {
+          setForm((current) => ({
+            ...current,
+            websiteScope: hasWebsiteScope(normalizeWebsiteScope(current.websiteScope))
+              ? current.websiteScope
+              : defaultWebsiteScope,
           }));
         }
       } catch (requestError) {
@@ -307,6 +353,10 @@ function CampaignFormPage() {
       return "Please select a template for this campaign";
     }
 
+    if (!hasWebsiteScope(normalizeWebsiteScope(form.websiteScope))) {
+      return "Please select a website audience";
+    }
+
     return "";
   };
 
@@ -330,7 +380,8 @@ function CampaignFormPage() {
       const payload = {
         ...form,
         status: effectiveStatus,
-        segmentId: form.segmentId || null,
+        segmentId: null,
+        websiteScope: normalizeWebsiteScope(form.websiteScope || {}),
         scheduledAt: toIsoStringFromLocalInput(form.scheduledAt) || null,
         isRecurring: Boolean(form.isRecurring),
         recurrenceInterval: Number(form.recurrenceInterval || 1),
@@ -682,25 +733,27 @@ function CampaignFormPage() {
               <div className="space-y-2">
                 <select
                   className="field"
-                  value={form.segmentId}
-                  onChange={(event) =>
+                  value={selectedWebsiteKey}
+                  onChange={(event) => {
+                    const website = websites.find((item) => item.id === event.target.value);
+                    const websiteScope = website ? getWebsiteOptionScope(website) : emptyWebsiteScope;
                     setForm((current) => ({
                       ...current,
-                      segmentId: event.target.value,
-                    }))
-                  }
+                      websiteScope,
+                      segmentId: "",
+                    }));
+                  }}
                 >
-                  <option value="">All subscribers</option>
-                  {segments.map((segment) => (
-                    <option key={segment._id} value={segment._id}>
-                      {segment.name}
-                    </option>
-                  ))}
+                  {websites.length ? (
+                    websites.map((website) => (
+                      <option key={website.id} value={website.id}>
+                        {website.label} ({website.count || 0})
+                      </option>
+                    ))
+                  ) : (
+                    <option value={getWebsiteScopeKey(emptyWebsiteScope)}>No websites found</option>
+                  )}
                 </select>
-                <p className="text-xs text-[#9a94b2]">
-                  Leave this blank to send to all subscribers, or choose a
-                  segment for targeted broadcast.
-                </p>
               </div>
             </FormField>
 
