@@ -171,6 +171,7 @@ function CampaignDetailsPage() {
   const navigate = useNavigate();
   const toast = useContext(ToastContext);
   const [campaign, setCampaign] = useState(null);
+  const [creditWallet, setCreditWallet] = useState(null);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPreviewTestModalOpen, setIsPreviewTestModalOpen] = useState(false);
@@ -202,8 +203,12 @@ function CampaignDetailsPage() {
     }
 
     try {
-      const { data } = await api.get(`/campaigns/${id}`);
-      setCampaign(data);
+      const [campaignResponse, creditsResponse] = await Promise.all([
+        api.get(`/campaigns/${id}`),
+        api.get('/billing/me/credits').catch(() => ({ data: null })),
+      ]);
+      setCampaign(campaignResponse.data);
+      setCreditWallet(creditsResponse.data);
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to load campaign");
     } finally {
@@ -315,12 +320,33 @@ function CampaignDetailsPage() {
 
   const handleSchedule = async (event) => {
     event.preventDefault();
+    const requiredCredits = Number(campaign?.totalRecipients || 0);
+    const availableCredits = Number(creditWallet?.wallet?.availableCredits || 0);
+    const selectedSendAt = toIsoStringFromLocalInput(scheduledAt);
+    const sendsImmediately = !selectedSendAt || new Date(selectedSendAt) <= new Date();
+
+    if (sendsImmediately && requiredCredits > availableCredits) {
+      toast.error(
+        `Insufficient credits. Required ${formatNumber(requiredCredits)}, available ${formatNumber(availableCredits)}.`,
+      );
+      return;
+    }
+
+    if (sendsImmediately) {
+      const confirmed = window.confirm(
+        `This campaign requires ${formatNumber(requiredCredits)} credits. Credits are reserved when sending starts and deducted only for emails submitted for sending.`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setIsSavingSchedule(true);
 
     try {
       await api.post(`/campaigns/${id}/schedule`, {
-        scheduledAt:
-          toIsoStringFromLocalInput(scheduledAt) || new Date().toISOString(),
+        scheduledAt: selectedSendAt || new Date().toISOString(),
       });
       toast.success("Campaign scheduled");
       setIsScheduleModalOpen(false);
@@ -358,6 +384,24 @@ function CampaignDetailsPage() {
   };
 
   const handleSendNow = async () => {
+    const requiredCredits = Number(campaign?.totalRecipients || 0);
+    const availableCredits = Number(creditWallet?.wallet?.availableCredits || 0);
+
+    if (requiredCredits > availableCredits) {
+      toast.error(
+        `Insufficient credits. Required ${formatNumber(requiredCredits)}, available ${formatNumber(availableCredits)}.`,
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `This campaign requires ${formatNumber(requiredCredits)} credits. Credits are reserved when sending starts and deducted only for emails submitted for sending.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     try {
       await api.post(`/email/campaigns/${id}/send`);
       toast.success("Campaign send started");

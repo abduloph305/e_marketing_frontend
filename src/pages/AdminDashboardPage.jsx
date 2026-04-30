@@ -4,7 +4,9 @@ import {
   BadgeIndianRupee,
   Ban,
   Bell,
+  CheckCircle2,
   ChevronDown,
+  Clock3,
   CreditCard,
   FileText,
   Home,
@@ -21,7 +23,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sun,
-  TicketPercent,
+  XCircle,
   UserCheck,
   Users,
   WalletCards,
@@ -51,14 +53,15 @@ const navSections = [
     ],
   },
   {
-    title: "Billing & Subscription",
+    title: "Billing & Credits",
     items: [
+      ["Settings", Settings],
+      ["Packs", WalletCards],
+      ["Wallets", BadgeIndianRupee],
       ["Plans", FileText],
       ["Subscriptions", CreditCard],
       ["Payments", WalletCards],
       ["Invoices", Receipt],
-      ["Coupons", TicketPercent],
-      ["Credits & Refunds", BadgeIndianRupee],
     ],
   },
   {
@@ -725,34 +728,309 @@ function AdminUsersView({
 
 const activityTypeLabels = {
   all: "All activity",
-  login: "Login history",
+  login: "Login",
   email: "Email events",
-  campaign: "Campaign activity",
-  automation: "Automation",
+  campaign: "Campaigns",
+  campaigns: "Campaigns",
+  automation: "Automations",
+  automations: "Automations",
+  subscriber: "Subscribers",
+  subscribers: "Subscribers",
+  segment: "Segments",
+  template: "Templates",
+  billing: "Billing",
+  settings: "Settings",
   activity: "Vendor actions",
 };
 
+const activityDateLabels = {
+  all: "All time",
+  today: "Today",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+};
+
+const getActivityModule = (item = {}) => item.module || item.category || "activity";
+
 const getActivityTone = (category) => {
-  if (category === "login") {
+  const normalizedCategory = getActivityModule({ module: category });
+
+  if (normalizedCategory === "login") {
     return "bg-emerald-50 text-emerald-700";
   }
 
-  if (category === "email") {
+  if (normalizedCategory === "email") {
     return "bg-sky-50 text-sky-700";
   }
 
-  if (category === "campaign") {
+  if (["campaign", "campaigns"].includes(normalizedCategory)) {
     return "bg-violet-50 text-violet-700";
   }
 
-  if (category === "automation") {
+  if (["automation", "automations"].includes(normalizedCategory)) {
     return "bg-orange-50 text-orange-700";
+  }
+
+  if (["subscriber", "subscribers"].includes(normalizedCategory)) {
+    return "bg-rose-50 text-rose-700";
   }
 
   return "bg-[#f5efff] text-[#5a4380]";
 };
 
+const getActivityIconTone = (status = "") => {
+  const normalizedStatus = String(status || "").toLowerCase();
+
+  if (["failed", "error"].includes(normalizedStatus)) {
+    return "bg-red-50 text-red-600";
+  }
+
+  if (["new", "read", "recorded"].includes(normalizedStatus)) {
+    return "bg-[#f5efff] text-[#5a4380]";
+  }
+
+  return "bg-emerald-50 text-emerald-700";
+};
+
+const formatActivityClock = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+};
+
+const getMetadataEntries = (metadata) =>
+  Object.entries(metadata || {}).filter(([, value]) => value !== undefined && value !== null && value !== "");
+
 function AdminActivityView({
+  activities,
+  activityType,
+  activityDateRange,
+  isLoading,
+  query,
+  setActivityDateRange,
+  setActivityType,
+  setQuery,
+  stats,
+}) {
+  const [selectedActivityId, setSelectedActivityId] = useState("");
+  const selectedActivity = activities.find((item) => item.id === selectedActivityId) || null;
+  const moduleOptions = [
+    ["all", "All activity"],
+    ["login", "Login"],
+    ["campaigns", "Campaigns"],
+    ["subscribers", "Subscribers"],
+    ["automations", "Automations"],
+    ["segments", "Segments"],
+    ["template", "Templates"],
+    ["email", "Email events"],
+    ["billing", "Billing"],
+    ["settings", "Settings"],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <AdminStatCard
+          icon={Activity}
+          label="Total Activities"
+          value={formatNumber(stats.totalActivities || activities.length)}
+          tone="text-[#665cf5]"
+          hint={`${formatNumber(stats.todayActivities)} today`}
+        />
+        <AdminStatCard
+          icon={Users}
+          label="Active Vendors"
+          value={formatNumber(stats.vendors)}
+          tone="text-[#009b5a]"
+          hint="With tracked dashboard activity"
+        />
+        <AdminStatCard
+          icon={Mail}
+          label="Campaign Actions"
+          value={formatNumber(stats.campaignActions)}
+          tone="text-[#0084c7]"
+          hint={`${formatNumber(stats.subscriberActions)} subscriber actions`}
+        />
+        <AdminStatCard
+          icon={AlertTriangle}
+          label="Failed Actions"
+          value={formatNumber(stats.failedActivities)}
+          tone="text-[#dc2626]"
+          hint={`${formatNumber(stats.logins)} login events`}
+        />
+      </section>
+
+      <section className="border border-[#ded7ef] bg-white shadow-[0_10px_28px_rgba(42,31,72,0.04)]">
+        <div className="border-b border-[#ded7ef] p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[#21192d]">User Activity</h2>
+              <p className="mt-1 text-[13px] text-[#7f6f96]">
+                Complete dashboard actions in simple admin-readable language.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_160px_150px] xl:min-w-[680px]">
+              <label className="flex h-10 items-center gap-2 border border-[#ded7ef] bg-white px-3">
+                <Search className="h-4 w-4 text-[#9b8caf]" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search vendor, action, campaign..."
+                  className="w-full min-w-0 border-0 bg-transparent text-[13px] outline-none"
+                />
+              </label>
+              <select
+                value={activityType}
+                onChange={(event) => setActivityType(event.target.value)}
+                className="h-10 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+              >
+                {moduleOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={activityDateRange}
+                onChange={(event) => setActivityDateRange(event.target.value)}
+                className="h-10 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+              >
+                {Object.entries(activityDateLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="p-6 text-center text-[13px] font-medium text-[#7f6f96]">
+            Loading user activity...
+          </div>
+        ) : null}
+
+        {!isLoading && !activities.length ? (
+          <div className="p-10 text-center">
+            <p className="text-[15px] font-semibold text-[#21192d]">No activity found</p>
+            <p className="mt-2 text-[13px] text-[#7f6f96]">
+              Dashboard actions will appear here after users create, edit, send, import, or log in.
+            </p>
+          </div>
+        ) : null}
+
+        {activities.length ? (
+          <div className="divide-y divide-[#eee9f8]">
+            {activities.map((item) => {
+              const module = getActivityModule(item);
+              const isSelected = selectedActivityId === item.id;
+              const StatusIcon = ["failed", "error"].includes(String(item.status || "").toLowerCase())
+                ? XCircle
+                : CheckCircle2;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedActivityId(isSelected ? "" : item.id)}
+                  className={`grid w-full gap-4 px-5 py-4 text-left transition hover:bg-[#fbf9ff] md:grid-cols-[92px_minmax(0,1fr)_180px_130px] ${
+                    isSelected ? "bg-[#fbf9ff]" : "bg-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 text-[12px] font-semibold text-[#6e5a93]">
+                    <Clock3 className="h-4 w-4" />
+                    {formatActivityClock(item.timestamp)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-2.5 py-1 text-[12px] font-semibold ${getActivityTone(module)}`}>
+                        {item.moduleLabel || activityTypeLabels[module] || module}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold ${getActivityIconTone(item.status)}`}>
+                        <StatusIcon className="h-3.5 w-3.5" />
+                        {item.status || item.action || "completed"}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[14px] font-semibold text-[#21192d]">{item.title}</p>
+                    <p className="mt-1 text-[13px] leading-5 text-[#7f6f96]">{item.message}</p>
+                    {item.entityName ? (
+                      <p className="mt-1 text-[12px] font-semibold text-[#5a4380]">Target: {item.entityName}</p>
+                    ) : null}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-[#21192d]">{item.vendor?.name || item.actor?.name || "Vendor"}</p>
+                    <p className="mt-1 truncate text-[12px] text-[#9b8caf]">{item.vendor?.email || item.actor?.email || item.vendor?.vendorId}</p>
+                  </div>
+                  <div className="text-[12px] text-[#7f6f96] md:text-right">
+                    <p>{formatDate(item.timestamp)}</p>
+                    <p className="mt-1 font-semibold text-[#5a4380]">{isSelected ? "Hide details" : "View details"}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      {selectedActivity ? (
+        <section className="border border-[#ded7ef] bg-white p-5 shadow-[0_10px_28px_rgba(42,31,72,0.04)]">
+          <div className="flex flex-col gap-2 border-b border-[#eee9f8] pb-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-[12px] font-semibold uppercase text-[#7f6f96]">Activity details</p>
+              <h3 className="mt-1 text-[17px] font-semibold text-[#21192d]">{selectedActivity.title}</h3>
+              <p className="mt-1 text-[13px] text-[#7f6f96]">{selectedActivity.message}</p>
+            </div>
+            <span className={`self-start px-2.5 py-1 text-[12px] font-semibold ${getActivityTone(getActivityModule(selectedActivity))}`}>
+              {selectedActivity.moduleLabel || activityTypeLabels[getActivityModule(selectedActivity)] || getActivityModule(selectedActivity)}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <p className="text-[12px] font-semibold text-[#9b8caf]">Vendor</p>
+              <p className="mt-1 text-[13px] font-semibold text-[#21192d]">{selectedActivity.vendor?.name || selectedActivity.actor?.name || "Vendor"}</p>
+              <p className="mt-1 text-[12px] text-[#7f6f96]">{selectedActivity.vendor?.email || selectedActivity.actor?.email || selectedActivity.vendor?.vendorId}</p>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-[#9b8caf]">Action</p>
+              <p className="mt-1 text-[13px] font-semibold text-[#21192d]">{selectedActivity.action || selectedActivity.type}</p>
+              <p className="mt-1 text-[12px] text-[#7f6f96]">{selectedActivity.status || "completed"}</p>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-[#9b8caf]">Target</p>
+              <p className="mt-1 text-[13px] font-semibold text-[#21192d]">{selectedActivity.entityName || selectedActivity.entityType || "General"}</p>
+              <p className="mt-1 text-[12px] text-[#7f6f96]">{selectedActivity.entityId || "No target id"}</p>
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-[#9b8caf]">Time</p>
+              <p className="mt-1 text-[13px] font-semibold text-[#21192d]">{formatDate(selectedActivity.timestamp)}</p>
+              <p className="mt-1 text-[12px] text-[#7f6f96]">{selectedActivity.ipAddress || "IP not captured"}</p>
+            </div>
+          </div>
+          {getMetadataEntries(selectedActivity.metadata).length ? (
+            <div className="mt-4 grid gap-2 border-t border-[#eee9f8] pt-4 md:grid-cols-2 xl:grid-cols-3">
+              {getMetadataEntries(selectedActivity.metadata).map(([key, value]) => (
+                <div key={key} className="bg-[#fbf9ff] px-3 py-2">
+                  <p className="text-[12px] font-semibold text-[#9b8caf]">{key}</p>
+                  <p className="mt-1 break-words text-[13px] text-[#21192d]">
+                    {Array.isArray(value) ? value.join(", ") : String(value)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function AdminActivityViewLegacy({
   activities,
   activityType,
   isLoading,
@@ -894,6 +1172,324 @@ function AdminActivityView({
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+const formatActivityDateGroup = (value) => {
+  if (!value) {
+    return "Unknown date";
+  }
+
+  const date = new Date(value);
+  const today = new Date();
+  const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startToday - startDate) / (24 * 60 * 60 * 1000));
+
+  if (diffDays === 0) {
+    return "Today";
+  }
+
+  if (diffDays === 1) {
+    return "Yesterday";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+  }).format(date);
+};
+
+const getVendorActivityKey = (item = {}) =>
+  item.vendor?.id || item.vendor?.vendorId || item.actor?.email || item.vendor?.email || "unknown";
+
+function AdminVendorActivityView({
+  activities,
+  activityType,
+  activityDateRange,
+  isLoading,
+  query,
+  setActivityDateRange,
+  setActivityType,
+  setQuery,
+  stats,
+}) {
+  const [selectedVendorKey, setSelectedVendorKey] = useState("");
+  const moduleOptions = [
+    ["all", "All activity"],
+    ["login", "Login"],
+    ["campaigns", "Campaigns"],
+    ["subscribers", "Subscribers"],
+    ["automations", "Automations"],
+    ["segments", "Segments"],
+    ["template", "Templates"],
+    ["email", "Email events"],
+    ["billing", "Billing"],
+    ["settings", "Settings"],
+  ];
+  const vendorRows = useMemo(() => {
+    const grouped = new Map();
+
+    activities.forEach((item) => {
+      const key = getVendorActivityKey(item);
+      const current = grouped.get(key) || {
+        key,
+        vendor: item.vendor || {},
+        actor: item.actor || {},
+        activities: [],
+        modules: new Set(),
+        lastActivityAt: item.timestamp,
+      };
+
+      current.activities.push(item);
+      current.modules.add(item.moduleLabel || activityTypeLabels[getActivityModule(item)] || getActivityModule(item));
+
+      if (new Date(item.timestamp) > new Date(current.lastActivityAt)) {
+        current.lastActivityAt = item.timestamp;
+      }
+
+      grouped.set(key, current);
+    });
+
+    return Array.from(grouped.values())
+      .map((row) => ({
+        ...row,
+        modules: Array.from(row.modules).slice(0, 4),
+      }))
+      .sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt));
+  }, [activities]);
+  const selectedVendor = vendorRows.find((row) => row.key === selectedVendorKey) || null;
+  const selectedActivities = selectedVendor?.activities || [];
+  const groupedActivities = selectedActivities.reduce((groups, item) => {
+    const label = formatActivityDateGroup(item.timestamp);
+    groups[label] = groups[label] || [];
+    groups[label].push(item);
+    return groups;
+  }, {});
+
+  return (
+    <div className="space-y-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <AdminStatCard
+          icon={Activity}
+          label="Total Activities"
+          value={formatNumber(stats.totalActivities || activities.length)}
+          tone="text-[#665cf5]"
+          hint={`${formatNumber(stats.todayActivities)} today`}
+        />
+        <AdminStatCard
+          icon={Users}
+          label="Tracked Vendors"
+          value={formatNumber(vendorRows.length || stats.vendors)}
+          tone="text-[#009b5a]"
+          hint="With dashboard activity"
+        />
+        <AdminStatCard
+          icon={Mail}
+          label="Campaign Actions"
+          value={formatNumber(stats.campaignActions)}
+          tone="text-[#0084c7]"
+          hint={`${formatNumber(stats.subscriberActions)} subscriber actions`}
+        />
+        <AdminStatCard
+          icon={AlertTriangle}
+          label="Failed Actions"
+          value={formatNumber(stats.failedActivities)}
+          tone="text-[#dc2626]"
+          hint={`${formatNumber(stats.logins)} login events`}
+        />
+      </section>
+
+      <section className="border border-[#ded7ef] bg-white shadow-[0_10px_28px_rgba(42,31,72,0.04)]">
+        <div className="border-b border-[#ded7ef] p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h2 className="text-[17px] font-semibold text-[#21192d]">User Activity</h2>
+              <p className="mt-1 text-[13px] text-[#7f6f96]">
+                Select a vendor to review their complete dashboard activity history.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_160px_150px] xl:min-w-[680px]">
+              <label className="flex h-10 items-center gap-2 border border-[#ded7ef] bg-white px-3">
+                <Search className="h-4 w-4 text-[#9b8caf]" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search vendor name"
+                  className="w-full min-w-0 border-0 bg-transparent text-[13px] outline-none"
+                />
+              </label>
+              {/* <select
+                value={activityType}
+                onChange={(event) => setActivityType(event.target.value)}
+                className="h-10 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+              >
+                {moduleOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select> */}
+              {/* <select
+                value={activityDateRange}
+                onChange={(event) => setActivityDateRange(event.target.value)}
+                className="h-10 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+              >
+                {Object.entries(activityDateLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select> */}
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="p-6 text-center text-[13px] font-medium text-[#7f6f96]">
+            Loading user activity...
+          </div>
+        ) : null}
+
+        {!isLoading && !vendorRows.length ? (
+          <div className="p-10 text-center">
+            <p className="text-[15px] font-semibold text-[#21192d]">No vendor activity found</p>
+            <p className="mt-2 text-[13px] text-[#7f6f96]">
+              Activity will appear here once vendors use the dashboard.
+            </p>
+          </div>
+        ) : null}
+
+        {vendorRows.length ? (
+          <div className="divide-y divide-[#eee9f8]">
+            {vendorRows.map((row) => (
+              <div key={row.key} className="grid gap-4 px-5 py-4 md:grid-cols-[minmax(0,1fr)_190px_150px] md:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-[14px] font-semibold text-[#21192d]">
+                    {row.vendor?.name || row.actor?.name || "Vendor"}
+                  </p>
+                  <p className="mt-1 truncate text-[12px] text-[#7f6f96]">
+                    {row.vendor?.email || row.actor?.email || row.vendor?.vendorId}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {row.modules.map((module) => (
+                      <span key={module} className="bg-[#f5efff] px-2.5 py-1 text-[12px] font-semibold text-[#5a4380]">
+                        {module}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold text-[#9b8caf]">Last activity</p>
+                  <p className="mt-1 text-[13px] font-semibold text-[#5a4380]">{formatDate(row.lastActivityAt)}</p>
+                  <p className="mt-1 text-[12px] text-[#7f6f96]">{formatNumber(row.activities.length)} activities</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedVendorKey(row.key)}
+                  className="h-10 border border-[#8338ec] px-4 text-[13px] font-semibold text-[#6d28d9] transition hover:bg-[#f5efff]"
+                >
+                  See activity
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      {selectedVendor ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#21192d]/45 p-4">
+          <section className="max-h-[88vh] w-full max-w-5xl overflow-hidden border border-[#ded7ef] bg-white shadow-[0_24px_80px_rgba(33,25,45,0.24)]">
+            <div className="flex flex-col gap-3 border-b border-[#ded7ef] p-5 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold uppercase text-[#7f6f96]">Vendor activity history</p>
+                <h3 className="mt-1 truncate text-[20px] font-semibold text-[#21192d]">
+                  {selectedVendor.vendor?.name || selectedVendor.actor?.name || "Vendor"}
+                </h3>
+                <p className="mt-1 truncate text-[13px] text-[#7f6f96]">
+                  {selectedVendor.vendor?.email || selectedVendor.actor?.email || selectedVendor.vendor?.vendorId}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="bg-[#f5efff] px-3 py-1.5 text-[12px] font-semibold text-[#5a4380]">
+                  {formatNumber(selectedActivities.length)} activities
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedVendorKey("")}
+                  className="h-9 border border-[#ded7ef] px-4 text-[13px] font-semibold text-[#5a4380] hover:bg-[#fbf9ff]"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="max-h-[calc(88vh-105px)] overflow-y-auto p-5">
+              {Object.entries(groupedActivities).map(([dateLabel, items]) => (
+                <div key={dateLabel} className="mb-6 last:mb-0">
+                  <div className="mb-3 flex items-center gap-3">
+                    <p className="text-[13px] font-semibold text-[#21192d]">{dateLabel}</p>
+                    <div className="h-px flex-1 bg-[#eee9f8]" />
+                  </div>
+                  <div className="space-y-3">
+                    {items.map((item) => {
+                      const module = getActivityModule(item);
+                      const StatusIcon = ["failed", "error"].includes(String(item.status || "").toLowerCase())
+                        ? XCircle
+                        : CheckCircle2;
+
+                      return (
+                        <div key={item.id} className="grid gap-3 border border-[#eee9f8] p-4 md:grid-cols-[82px_minmax(0,1fr)]">
+                          <div className="flex items-center gap-2 text-[12px] font-semibold text-[#6e5a93]">
+                            <Clock3 className="h-4 w-4" />
+                            {formatActivityClock(item.timestamp)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`px-2.5 py-1 text-[12px] font-semibold ${getActivityTone(module)}`}>
+                                {item.moduleLabel || activityTypeLabels[module] || module}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold ${getActivityIconTone(item.status)}`}>
+                                <StatusIcon className="h-3.5 w-3.5" />
+                                {item.status || item.action || "completed"}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-[14px] font-semibold text-[#21192d]">{item.title}</p>
+                            <p className="mt-1 text-[13px] leading-5 text-[#7f6f96]">{item.message}</p>
+                            {item.entityName || item.ipAddress || getMetadataEntries(item.metadata).length ? (
+                              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                                {item.entityName ? (
+                                  <div className="bg-[#fbf9ff] px-3 py-2">
+                                    <p className="text-[12px] font-semibold text-[#9b8caf]">Target</p>
+                                    <p className="mt-1 break-words text-[13px] text-[#21192d]">{item.entityName}</p>
+                                  </div>
+                                ) : null}
+                                {item.ipAddress ? (
+                                  <div className="bg-[#fbf9ff] px-3 py-2">
+                                    <p className="text-[12px] font-semibold text-[#9b8caf]">IP address</p>
+                                    <p className="mt-1 break-words text-[13px] text-[#21192d]">{item.ipAddress}</p>
+                                  </div>
+                                ) : null}
+                                {getMetadataEntries(item.metadata).slice(0, 4).map(([key, value]) => (
+                                  <div key={key} className="bg-[#fbf9ff] px-3 py-2">
+                                    <p className="text-[12px] font-semibold text-[#9b8caf]">{key}</p>
+                                    <p className="mt-1 break-words text-[13px] text-[#21192d]">
+                                      {Array.isArray(value) ? value.join(", ") : String(value)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1077,20 +1673,67 @@ const emptyPlanForm = {
   sortOrder: "",
 };
 
+const emptyCreditPackForm = {
+  id: "",
+  name: "",
+  credits: "",
+  price: "",
+  isActive: true,
+  sortOrder: "",
+};
+
+const billingViewHelpText = {
+  settings:
+    "Set the default rules for using credits, such as when credits expire, when to warn about low balance, how many emails a vendor can send per day, and the maximum recipients allowed in one campaign.",
+  packs:
+    "Create and manage credit packs that vendors can purchase. Each pack defines how many email credits the vendor gets and how much they pay for it.",
+  wallets:
+    "Manage each vendor's credit balance. You can add or deduct credits manually, freeze a wallet, freeze email sending, or set custom sending limits for a specific vendor.",
+  payments:
+    "View all payment records from vendors, including subscription payments and credit pack purchases. This helps you track successful, pending, or failed payments.",
+  invoices:
+    "View invoices generated for vendor payments. These invoices are linked to plans or credit purchases and can be used for billing and GST records.",
+  plans:
+    "Create and edit subscription plans for vendors. Plans control pricing, billing cycle options, and feature limits such as templates, automations, segments, or team members.",
+  subscriptions:
+    "Manage which plan is assigned to each vendor. You can update the vendor's plan, subscription status, billing cycle, and manual billing details.",
+};
+
 function AdminBillingView({
   billingView,
+  creditPackForm,
+  creditPacks,
   invoices,
   isLoading,
+  onCreditPackDelete,
+  onCreditPackSubmit,
   onPlanSubmit,
+  onSettingsSubmit,
   onSubscriptionUpdate,
+  onWalletUpdate,
   payments,
   planForm,
   plans,
+  paygSettings,
   setBillingView,
+  setCreditPackForm,
   setPlanForm,
+  setPaygSettings,
   subscriptions,
   updatingSubscriptionId,
+  wallets,
 }) {
+  const [billingTooltip, setBillingTooltip] = useState(null);
+  const [walletModal, setWalletModal] = useState(null);
+  const [walletForm, setWalletForm] = useState({
+    credits: "",
+    reason: "",
+    customPerEmailPrice: "",
+    customDailySendLimit: "",
+    customMaxRecipientsPerCampaign: "",
+    isFrozen: false,
+    sendingFrozen: false,
+  });
   const activePlans = plans.filter((plan) => plan.isActive);
   const activeSubscriptions = subscriptions.filter((item) => ["active", "free", "trial"].includes(item.status));
   const monthlyRevenue = subscriptions.reduce((sum, item) => {
@@ -1101,6 +1744,59 @@ function AdminBillingView({
 
     return sum + Number(item.billingCycle === "yearly" ? (plan.yearlyPrice || 0) / 12 : plan.monthlyPrice || 0);
   }, 0);
+  const showBillingTooltip = (event, item) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(420, window.innerWidth - 32);
+    const left = Math.min(Math.max(rect.left, 16), window.innerWidth - width - 16);
+    const top = rect.bottom + 8;
+
+    setBillingTooltip({ item, left, top, width });
+  };
+  const openWalletModal = (wallet) => {
+    setWalletModal(wallet);
+    setWalletForm({
+      credits: "",
+      reason: "",
+      customPerEmailPrice: wallet.customPerEmailPrice ?? "",
+      customDailySendLimit: wallet.customDailySendLimit ?? "",
+      customMaxRecipientsPerCampaign: wallet.customMaxRecipientsPerCampaign ?? "",
+      isFrozen: Boolean(wallet.isFrozen),
+      sendingFrozen: Boolean(wallet.sendingFrozen),
+    });
+  };
+  const updateWalletForm = (key, value) => {
+    setWalletForm((current) => ({ ...current, [key]: value }));
+  };
+  const submitWalletAction = async (type) => {
+    if (!walletModal) {
+      return;
+    }
+
+    const didUpdate = await onWalletUpdate(walletModal, type, {
+      credits: walletForm.credits,
+      reason: walletForm.reason,
+    });
+    if (didUpdate) {
+      setWalletForm((current) => ({ ...current, credits: "", reason: "" }));
+    }
+  };
+  const submitWalletControls = async () => {
+    if (!walletModal) {
+      return;
+    }
+
+    const didUpdate = await onWalletUpdate(walletModal, "controls", {
+      customPerEmailPrice: walletForm.customPerEmailPrice,
+      customDailySendLimit: walletForm.customDailySendLimit,
+      customMaxRecipientsPerCampaign: walletForm.customMaxRecipientsPerCampaign,
+      isFrozen: walletForm.isFrozen,
+      sendingFrozen: walletForm.sendingFrozen,
+      reason: walletForm.reason || "Admin wallet control update",
+    });
+    if (didUpdate) {
+      setWalletModal(null);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -1138,26 +1834,46 @@ function AdminBillingView({
       <section className="border border-[#ded7ef] bg-white shadow-[0_10px_28px_rgba(42,31,72,0.04)]">
         <div className="flex flex-col gap-4 border-b border-[#ded7ef] p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-[17px] font-semibold text-[#21192d]">Billing & Subscription</h2>
+            <h2 className="text-[17px] font-semibold text-[#21192d]">Billing & Credits</h2>
             <p className="mt-1 text-[13px] text-[#9b8caf]">
-              Plans, vendor subscriptions, payments, and GST-ready invoices
+              PAYG settings, credit packs, vendor wallets, payments, and GST-ready invoices
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {["plans", "subscriptions", "payments", "invoices"].map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setBillingView(item)}
-                className={`border px-3 py-2 text-[12px] font-semibold capitalize ${
-                  billingView === item
-                    ? "border-[#b99be7] bg-[#f5efff] text-[#3b176d]"
-                    : "border-[#ded7ef] bg-white text-[#5a4380]"
-                }`}
-              >
-                {item}
-              </button>
+          <div className="flex max-w-3xl flex-wrap gap-2">
+            {["settings", "packs", "wallets", "payments", "invoices", "plans", "subscriptions"].map((item) => (
+              <div key={item}>
+                <button
+                  type="button"
+                  onClick={() => setBillingView(item)}
+                  onBlur={() => setBillingTooltip(null)}
+                  onFocus={(event) => showBillingTooltip(event, item)}
+                  onMouseEnter={(event) => showBillingTooltip(event, item)}
+                  onMouseLeave={() => setBillingTooltip(null)}
+                  aria-describedby={billingTooltip?.item === item ? `billing-view-helper-${item}` : undefined}
+                  className={`border px-3 py-2 text-[12px] font-semibold capitalize ${
+                    billingView === item
+                      ? "border-[#b99be7] bg-[#f5efff] text-[#3b176d]"
+                      : "border-[#ded7ef] bg-white text-[#5a4380]"
+                  }`}
+                >
+                  {item}
+                </button>
+              </div>
             ))}
+            {billingTooltip ? (
+              <div
+                id={`billing-view-helper-${billingTooltip.item}`}
+                role="tooltip"
+                style={{
+                  left: `${billingTooltip.left}px`,
+                  top: `${billingTooltip.top}px`,
+                  width: `${billingTooltip.width}px`,
+                }}
+                className="fixed z-50 border border-[#ded7ef] bg-white px-3 py-2 text-[12px] leading-5 text-[#5a4380] shadow-[0_14px_34px_rgba(42,31,72,0.14)]"
+              >
+                {billingViewHelpText[billingTooltip.item]}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1291,6 +2007,327 @@ function AdminBillingView({
                 </div>
               ))}
             </div>
+          </div>
+        ) : null}
+
+        {billingView === "settings" ? (
+          <form className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3" onSubmit={onSettingsSubmit}>
+            {[
+              ["creditExpiryMonths", "Credit expiry months (0 = no expiry)"],
+              ["lowBalanceWarningThreshold", "Low balance warning threshold"],
+              ["dailySendLimitDefault", "Daily send limit default"],
+              ["maxRecipientsPerCampaignDefault", "Max recipients per campaign default"],
+            ].map(([key, label]) => (
+              <label key={key} className="block">
+                <span className="text-[12px] font-semibold text-[#6e5a93]">{label}</span>
+                <input
+                  type="number"
+                  step="1"
+                  value={paygSettings[key] ?? ""}
+                  onChange={(event) => setPaygSettings((current) => ({ ...current, [key]: event.target.value }))}
+                  className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                />
+              </label>
+            ))}
+            <div className="flex items-end">
+              <button type="submit" className="border border-[#8338ec] bg-[#8338ec] px-4 py-2.5 text-[12px] font-semibold text-white">
+                Save PAYG Settings
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {billingView === "packs" ? (
+          <div className="grid gap-5 p-5 xl:grid-cols-[340px_1fr]">
+            <form className="space-y-3 border border-[#ded7ef] p-4" onSubmit={onCreditPackSubmit}>
+              <div>
+                <h3 className="text-[15px] font-semibold text-[#21192d]">
+                  {creditPackForm.id ? "Edit Credit Pack" : "Create Credit Pack"}
+                </h3>
+                <p className="mt-1 text-[12px] text-[#9b8caf]">Define PAYG credit packs for vendors.</p>
+              </div>
+              {[
+                ["name", "Pack name"],
+                ["credits", "Credits"],
+                ["price", "Price"],
+                ["sortOrder", "Sort order"],
+              ].map(([key, label]) => (
+                <label key={key} className="block">
+                  <span className="text-[12px] font-semibold text-[#6e5a93]">{label}</span>
+                  <input
+                    value={creditPackForm[key]}
+                    onChange={(event) => setCreditPackForm((current) => ({ ...current, [key]: event.target.value }))}
+                    className="mt-1 h-9 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                  />
+                </label>
+              ))}
+              <label className="flex items-center gap-2 text-[12px] font-semibold text-[#5a4380]">
+                <input
+                  type="checkbox"
+                  checked={creditPackForm.isActive}
+                  onChange={(event) => setCreditPackForm((current) => ({ ...current, isActive: event.target.checked }))}
+                />
+                Active
+              </label>
+              <div className="flex gap-2">
+                <button type="submit" className="border border-[#8338ec] bg-[#8338ec] px-4 py-2 text-[12px] font-semibold text-white">
+                  {creditPackForm.id ? "Update Pack" : "Create Pack"}
+                </button>
+                {creditPackForm.id ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreditPackForm(emptyCreditPackForm)}
+                    className="border border-[#ded7ef] px-4 py-2 text-[12px] font-semibold text-[#5a4380]"
+                  >
+                    Cancel
+                  </button>
+                ) : null}
+              </div>
+            </form>
+            <div className="grid gap-4 md:grid-cols-2">
+              {creditPacks.map((pack) => (
+                <div key={pack._id} className="border border-[#ded7ef] p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-[16px] font-semibold text-[#21192d]">{pack.name}</h3>
+                      <p className="mt-1 text-[12px] text-[#9b8caf]">
+                        {formatNumber(pack.credits)} credits at {formatPlanPrice(pack.price, pack.currency)}
+                      </p>
+                    </div>
+                    <span className={`px-2 py-1 text-[11px] font-semibold ${pack.isActive ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                      {pack.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-[12px]">
+                    <MetricDetail label="Per Email" value={`₹${Number(pack.effectiveRate || pack.price / Math.max(pack.credits, 1)).toFixed(3)}`} />
+                    <MetricDetail label="Sort Order" value={pack.sortOrder || 0} />
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCreditPackForm({
+                          id: pack._id,
+                          name: pack.name || "",
+                          credits: pack.credits || "",
+                          price: pack.price || "",
+                          isActive: pack.isActive,
+                          sortOrder: pack.sortOrder || "",
+                        })
+                      }
+                      className="border border-[#ded7ef] px-3 py-1.5 text-[12px] font-semibold text-[#5a4380]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onCreditPackDelete(pack)}
+                      className="border border-rose-200 px-3 py-1.5 text-[12px] font-semibold text-rose-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {billingView === "wallets" ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-[13px]">
+              <thead className="bg-[#fbf9ff] text-[12px] font-semibold text-[#6e5a93]">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Vendor</th>
+                  <th className="px-5 py-3 font-medium">Credits</th>
+                  <th className="px-5 py-3 font-medium">Purchased / Used</th>
+                  <th className="px-5 py-3 font-medium">Last Purchase</th>
+                  <th className="px-5 py-3 font-medium">Controls</th>
+                  <th className="px-5 py-3 font-medium">Wallet Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eee9f8]">
+                {wallets.map((wallet) => (
+                  <tr key={wallet._id || wallet.vendorId}>
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-[#21192d]">{wallet.vendor?.name}</p>
+                      <p className="mt-1 text-[12px] text-[#9b8caf]">{wallet.vendor?.email || wallet.vendorId}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-[#21192d]">{formatNumber(wallet.availableCredits)} available</p>
+                      <p className="mt-1 text-[12px] text-[#9b8caf]">{formatNumber(wallet.reservedCredits)} reserved</p>
+                    </td>
+                    <td className="px-5 py-4 text-[#7f6f96]">
+                      <p>{formatNumber((wallet.totals?.totalPurchased || 0) + (wallet.totals?.totalAdminAdded || 0))} purchased/added</p>
+                      <p className="mt-1">{formatNumber(wallet.totals?.totalUsed || wallet.usedCredits || 0)} used</p>
+                      <p className="mt-1">{formatNumber(wallet.totals?.failedBeforeSendRefunds || 0)} failed-before-send refunds</p>
+                    </td>
+                    <td className="px-5 py-4 text-[#7f6f96]">{formatDate(wallet.totals?.lastPurchaseDate || wallet.lastPurchaseAt)}</td>
+                    <td className="px-5 py-4 text-[#7f6f96]">
+                      <p>{wallet.isFrozen ? "Wallet frozen" : "Wallet active"}</p>
+                      <p className="mt-1">{wallet.sendingFrozen ? "Sending frozen" : "Sending active"}</p>
+                      <p className="mt-1">Rate: {wallet.customPerEmailPrice ?? "default"}</p>
+                      <p className="mt-1">Daily: {wallet.customDailySendLimit ?? "default"}</p>
+                      <p className="mt-1">Campaign max: {wallet.customMaxRecipientsPerCampaign ?? "default"}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <button
+                        type="button"
+                        onClick={() => openWalletModal(wallet)}
+                        className="border border-[#8338ec] bg-[#8338ec] px-3 py-2 text-[12px] font-semibold text-white"
+                      >
+                        Manage Wallet
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {walletModal ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#21192d]/30 px-4 py-6">
+                <button
+                  type="button"
+                  className="absolute inset-0 cursor-default"
+                  onClick={() => setWalletModal(null)}
+                  aria-label="Close wallet manager"
+                />
+                <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-[#ded7ef] bg-white shadow-[0_24px_64px_rgba(42,31,72,0.22)]">
+                  <div className="flex items-start justify-between gap-4 border-b border-[#eee9f8] px-5 py-4">
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase text-[#9b8caf]">Manage Wallet</p>
+                      <h3 className="mt-1 text-[18px] font-semibold text-[#21192d]">
+                        {walletModal.vendor?.name || walletModal.vendorId}
+                      </h3>
+                      <p className="mt-1 text-[12px] text-[#7f6f96]">
+                        {formatNumber(walletModal.availableCredits)} available / {formatNumber(walletModal.reservedCredits)} reserved
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWalletModal(null)}
+                      className="border border-[#ded7ef] px-3 py-2 text-[12px] font-semibold text-[#5a4380] hover:bg-[#f5efff]"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="grid gap-5 p-5 lg:grid-cols-2">
+                    <section className="border border-[#eee9f8] p-4">
+                      <h4 className="text-[14px] font-semibold text-[#21192d]">Credit adjustment</h4>
+                      <p className="mt-1 text-[12px] leading-5 text-[#9b8caf]">
+                        Add, deduct, or refund credits for this vendor wallet.
+                      </p>
+                      <div className="mt-4 grid gap-3">
+                        <label className="block">
+                          <span className="text-[12px] font-semibold text-[#6e5a93]">Credits</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={walletForm.credits}
+                            onChange={(event) => updateWalletForm("credits", event.target.value)}
+                            className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[12px] font-semibold text-[#6e5a93]">Reason</span>
+                          <input
+                            value={walletForm.reason}
+                            onChange={(event) => updateWalletForm("reason", event.target.value)}
+                            className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                          />
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => submitWalletAction("add")}
+                            className="border border-emerald-200 px-3 py-2 text-[12px] font-semibold text-emerald-700"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => submitWalletAction("deduct")}
+                            className="border border-rose-200 px-3 py-2 text-[12px] font-semibold text-rose-700"
+                          >
+                            Deduct
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => submitWalletAction("refund")}
+                            className="border border-[#ded7ef] px-3 py-2 text-[12px] font-semibold text-[#5a4380]"
+                          >
+                            Refund
+                          </button>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="border border-[#eee9f8] p-4">
+                      <h4 className="text-[14px] font-semibold text-[#21192d]">Wallet controls</h4>
+                      <p className="mt-1 text-[12px] leading-5 text-[#9b8caf]">
+                        Freeze wallet access, pause sending, or set vendor-specific limits.
+                      </p>
+                      <div className="mt-4 grid gap-3">
+                        <label className="flex items-center justify-between gap-4 border border-[#eee9f8] px-3 py-2 text-[13px] font-semibold text-[#5a4380]">
+                          Freeze wallet
+                          <input
+                            type="checkbox"
+                            checked={walletForm.isFrozen}
+                            onChange={(event) => updateWalletForm("isFrozen", event.target.checked)}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-4 border border-[#eee9f8] px-3 py-2 text-[13px] font-semibold text-[#5a4380]">
+                          Freeze sending
+                          <input
+                            type="checkbox"
+                            checked={walletForm.sendingFrozen}
+                            onChange={(event) => updateWalletForm("sendingFrozen", event.target.checked)}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[12px] font-semibold text-[#6e5a93]">Custom rate</span>
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={walletForm.customPerEmailPrice}
+                            onChange={(event) => updateWalletForm("customPerEmailPrice", event.target.value)}
+                            placeholder="Leave blank for default"
+                            className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[12px] font-semibold text-[#6e5a93]">Daily limit</span>
+                          <input
+                            type="number"
+                            value={walletForm.customDailySendLimit}
+                            onChange={(event) => updateWalletForm("customDailySendLimit", event.target.value)}
+                            placeholder="Leave blank for default"
+                            className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[12px] font-semibold text-[#6e5a93]">Campaign max recipients</span>
+                          <input
+                            type="number"
+                            value={walletForm.customMaxRecipientsPerCampaign}
+                            onChange={(event) => updateWalletForm("customMaxRecipientsPerCampaign", event.target.value)}
+                            placeholder="Leave blank for default"
+                            className="mt-1 h-10 w-full border border-[#ded7ef] px-3 text-[13px] outline-none"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={submitWalletControls}
+                          className="border border-[#8338ec] bg-[#8338ec] px-4 py-2.5 text-[12px] font-semibold text-white"
+                        >
+                          Save controls
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1441,10 +2478,13 @@ function AdminDashboardPage() {
   const [adminUsers, setAdminUsers] = useState([]);
   const [activityOverview, setActivityOverview] = useState({ activities: [], stats: {} });
   const [billingData, setBillingData] = useState({
+    creditPacks: [],
     invoices: [],
     payments: [],
     plans: [],
+    paygSettings: {},
     subscriptions: [],
+    wallets: [],
   });
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -1458,11 +2498,14 @@ function AdminDashboardPage() {
   const [riskQuery, setRiskQuery] = useState("");
   const [activityQuery, setActivityQuery] = useState("");
   const [activityType, setActivityType] = useState("all");
+  const [activityDateRange, setActivityDateRange] = useState("30d");
   const [updatingVendorId, setUpdatingVendorId] = useState("");
   const [updatingSubscriptionId, setUpdatingSubscriptionId] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
   const [billingView, setBillingView] = useState("plans");
   const [planForm, setPlanForm] = useState(emptyPlanForm);
+  const [creditPackForm, setCreditPackForm] = useState(emptyCreditPackForm);
+  const [paygSettings, setPaygSettings] = useState({});
   const [openDetail, setOpenDetail] = useState(null);
   const [vendorProfile, setVendorProfile] = useState(null);
   const [isVendorProfileLoading, setIsVendorProfileLoading] = useState(false);
@@ -1526,19 +2569,35 @@ function AdminDashboardPage() {
   const loadBilling = async () => {
     setIsBillingLoading(true);
     try {
-      const [plansResponse, subscriptionsResponse, paymentsResponse, invoicesResponse] = await Promise.all([
+      const [
+        plansResponse,
+        subscriptionsResponse,
+        paymentsResponse,
+        invoicesResponse,
+        packsResponse,
+        settingsResponse,
+        walletsResponse,
+      ] = await Promise.all([
         api.get("/billing/plans"),
         api.get("/billing/subscriptions"),
         api.get("/billing/payments"),
         api.get("/billing/invoices"),
+        api.get("/billing/credit-packs"),
+        api.get("/billing/payg-settings"),
+        api.get("/billing/wallets"),
       ]);
 
+      const nextSettings = settingsResponse.data.settings || {};
       setBillingData({
+        creditPacks: packsResponse.data.packs || [],
         invoices: invoicesResponse.data.invoices || [],
         payments: paymentsResponse.data.payments || [],
         plans: plansResponse.data.plans || [],
+        paygSettings: nextSettings,
         subscriptions: subscriptionsResponse.data.subscriptions || [],
+        wallets: walletsResponse.data.wallets || [],
       });
+      setPaygSettings(nextSettings);
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to load billing");
     } finally {
@@ -1631,28 +2690,53 @@ function AdminDashboardPage() {
   const filteredActivities = useMemo(() => {
     const normalizedQuery = activityQuery.trim().toLowerCase();
     const list = activityOverview.activities || [];
+    const now = new Date();
+    const dateCutoff =
+      activityDateRange === "today"
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        : activityDateRange === "7d"
+          ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          : activityDateRange === "30d"
+            ? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+            : null;
 
     return list.filter((item) => {
-      const matchesType = activityType === "all" || item.category === activityType;
+      const module = getActivityModule(item);
+      const moduleAliases = {
+        automation: "automations",
+        campaign: "campaigns",
+        segment: "segments",
+        subscriber: "subscribers",
+        template: "template",
+      };
+      const normalizedModule = moduleAliases[module] || module;
+      const matchesType = activityType === "all" || normalizedModule === activityType || module === activityType;
+      const matchesDate = !dateCutoff || new Date(item.timestamp) >= dateCutoff;
       const matchesQuery =
         !normalizedQuery ||
         [
           item.title,
           item.message,
           item.category,
+          item.module,
+          item.moduleLabel,
           item.type,
           item.status,
+          item.action,
+          item.entityName,
           item.vendor?.name,
           item.vendor?.email,
           item.vendor?.vendorId,
+          item.actor?.name,
+          item.actor?.email,
           item.entityType,
         ]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(normalizedQuery));
 
-      return matchesType && matchesQuery;
+      return matchesType && matchesDate && matchesQuery;
     });
-  }, [activityOverview.activities, activityQuery, activityType]);
+  }, [activityDateRange, activityOverview.activities, activityQuery, activityType]);
 
   const updateVendorStatus = async (vendor) => {
     const nextStatus = vendor.accountStatus === "inactive" ? "active" : "inactive";
@@ -1730,7 +2814,7 @@ function AdminDashboardPage() {
     setBillingView(nextView);
     setOpenSections((current) => ({
       ...current,
-      "Billing & Subscription": true,
+      "Billing & Credits": true,
     }));
   };
 
@@ -1759,6 +2843,70 @@ function AdminDashboardPage() {
       await loadBilling();
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to save plan");
+    }
+  };
+
+  const submitPaygSettings = async (event) => {
+    event.preventDefault();
+    try {
+      const { defaultPerEmailPrice: _defaultPerEmailPrice, ...settingsPayload } = paygSettings;
+      await api.patch("/billing/payg-settings", settingsPayload);
+      toast.success("PAYG settings updated");
+      await loadBilling();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to save PAYG settings");
+    }
+  };
+
+  const submitCreditPack = async (event) => {
+    event.preventDefault();
+    try {
+      if (creditPackForm.id) {
+        await api.patch(`/billing/credit-packs/${creditPackForm.id}`, creditPackForm);
+        toast.success("Credit pack updated");
+      } else {
+        await api.post("/billing/credit-packs", creditPackForm);
+        toast.success("Credit pack created");
+      }
+      setCreditPackForm(emptyCreditPackForm);
+      await loadBilling();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to save credit pack");
+    }
+  };
+
+  const deleteCreditPack = async (pack) => {
+    try {
+      await api.delete(`/billing/credit-packs/${pack._id}`);
+      toast.success("Credit pack deleted");
+      await loadBilling();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to delete credit pack");
+    }
+  };
+
+  const updateWallet = async (wallet, type, controlUpdates = {}) => {
+    const creditsInput = document.getElementById(`credits-${wallet.vendorId}`);
+    const reasonInput = document.getElementById(`reason-${wallet.vendorId}`);
+    const rateInput = document.getElementById(`rate-${wallet.vendorId}`);
+    const dailyInput = document.getElementById(`daily-${wallet.vendorId}`);
+    const maxInput = document.getElementById(`max-${wallet.vendorId}`);
+    try {
+      await api.patch(`/billing/wallets/${wallet.vendorId}`, {
+        type,
+        credits: creditsInput?.value || 0,
+        reason: reasonInput?.value || (type === "controls" ? "Admin wallet control update" : "Admin manual adjustment"),
+        customPerEmailPrice: rateInput?.value ?? undefined,
+        customDailySendLimit: dailyInput?.value ?? undefined,
+        customMaxRecipientsPerCampaign: maxInput?.value ?? undefined,
+        ...controlUpdates,
+      });
+      if (creditsInput) creditsInput.value = "";
+      if (reasonInput) reasonInput.value = "";
+      toast.success("Wallet updated");
+      await loadBilling();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Unable to update wallet");
     }
   };
 
@@ -1923,7 +3071,10 @@ function AdminDashboardPage() {
                           return;
                         }
 
-                        if (["Plans", "Subscriptions", "Payments", "Invoices"].includes(label)) {
+                        if (
+                          section.title === "Billing & Credits" &&
+                          ["Settings", "Packs", "Wallets", "Plans", "Subscriptions", "Payments", "Invoices"].includes(label)
+                        ) {
                           openBilling(label.toLowerCase());
                           return;
                         }
@@ -1934,7 +3085,8 @@ function AdminDashboardPage() {
                         (label === "Users" && activeView === "users") ||
                         (label === "User Activity" && activeView === "activity") ||
                         (label === "Risk Monitoring" && activeView === "risk") ||
-                        (["Plans", "Subscriptions", "Payments", "Invoices"].includes(label) &&
+                        (section.title === "Billing & Credits" &&
+                          ["Settings", "Packs", "Wallets", "Plans", "Subscriptions", "Payments", "Invoices"].includes(label) &&
                           activeView === "billing" &&
                           billingView === label.toLowerCase())
                           ? "bg-[#e5d5f8] font-semibold text-[#3b176d]"
@@ -1994,7 +3146,7 @@ function AdminDashboardPage() {
                       : activeView === "risk"
                         ? "Risk Monitoring"
                         : activeView === "billing"
-                          ? "Billing & Subscription"
+                          ? "Billing & Credits"
                         : "Dashboard"}
                 </h1>
               </div>
@@ -2107,11 +3259,13 @@ function AdminDashboardPage() {
               vendors={filteredAdminUsers}
             />
           ) : activeView === "activity" ? (
-            <AdminActivityView
+            <AdminVendorActivityView
               activities={filteredActivities}
+              activityDateRange={activityDateRange}
               activityType={activityType}
               isLoading={isActivityLoading}
               query={activityQuery}
+              setActivityDateRange={setActivityDateRange}
               setActivityType={setActivityType}
               setQuery={setActivityQuery}
               stats={activityOverview.stats || {}}
@@ -2129,17 +3283,27 @@ function AdminDashboardPage() {
           ) : activeView === "billing" ? (
             <AdminBillingView
               billingView={billingView}
+              creditPackForm={creditPackForm}
+              creditPacks={billingData.creditPacks}
               invoices={billingData.invoices}
               isLoading={isBillingLoading}
+              onCreditPackDelete={deleteCreditPack}
+              onCreditPackSubmit={submitCreditPack}
               onPlanSubmit={submitPlan}
+              onSettingsSubmit={submitPaygSettings}
               onSubscriptionUpdate={updateSubscriptionPlan}
+              onWalletUpdate={updateWallet}
               payments={billingData.payments}
               planForm={planForm}
               plans={billingData.plans}
+              paygSettings={paygSettings}
               setBillingView={setBillingView}
+              setCreditPackForm={setCreditPackForm}
               setPlanForm={setPlanForm}
+              setPaygSettings={setPaygSettings}
               subscriptions={billingData.subscriptions}
               updatingSubscriptionId={updatingSubscriptionId}
+              wallets={billingData.wallets}
             />
           ) : (
             <>

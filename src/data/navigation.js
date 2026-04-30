@@ -90,9 +90,9 @@
     permission: "view_reports",
   },
   {
-    label: "Billing / Plan",
+    label: "Billing / Credits",
     path: "/billing",
-    description: "Review plan limits, email usage, subscription status, and invoices.",
+    description: "Review wallet credits, usage, credit packs, transactions, and invoices.",
     group: "Workspace",
     icon: "billing",
     permission: "view_billing",
