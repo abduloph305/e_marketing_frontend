@@ -39,6 +39,38 @@ const formatRecurringRule = (campaign) => {
   return `Every ${quantity} ${suffix}`;
 };
 
+const normalizeWebsiteScope = (scope = {}) => ({
+  websiteId: String(scope.websiteId || scope.website_id || "").trim(),
+  websiteSlug: String(scope.websiteSlug || scope.website_slug || "").trim(),
+  websiteName: String(scope.websiteName || scope.website_name || "").trim(),
+  label: String(
+    scope.label ||
+      scope.websiteName ||
+      scope.website_name ||
+      scope.websiteSlug ||
+      scope.website_slug ||
+      scope.websiteId ||
+      scope.website_id ||
+      "",
+  ).trim(),
+});
+
+const hasWebsiteScope = (scope = {}) => Boolean(scope.websiteId || scope.websiteSlug || scope.websiteName);
+
+const formatCampaignAudience = (campaign = {}) => {
+  const scopes = (Array.isArray(campaign.websiteScopes) && campaign.websiteScopes.length
+    ? campaign.websiteScopes
+    : [campaign.websiteScope || campaign.segmentId?.websiteScope || {}])
+    .map(normalizeWebsiteScope)
+    .filter(hasWebsiteScope);
+
+  if (scopes.length) {
+    return scopes.map((scope) => scope.label || scope.websiteName || scope.websiteSlug || scope.websiteId).join(", ");
+  }
+
+  return campaign.segmentId?.name || "All subscribers";
+};
+
 const stripTags = (value = "") =>
   String(value)
     .replace(/<[^>]*>/g, " ")
@@ -296,7 +328,7 @@ function CampaignDetailsPage() {
       ["From email", campaign.fromEmail],
       ["Reply-to", campaign.replyTo || "Not set"],
       ["Template", campaign.templateId?.name || "Unknown"],
-      ["Segment", campaign.segmentId?.name || "All subscribers"],
+      ["Audience", formatCampaignAudience(campaign)],
       [
         campaign.isRecurring ? "Next run" : "Scheduled at",
         formatDateTime(campaign.scheduledAt),

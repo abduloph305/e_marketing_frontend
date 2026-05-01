@@ -34,6 +34,7 @@ const createInitialForm = () => ({
     websiteName: "",
     label: "",
   },
+  websiteScopes: [],
   status: "",
   scheduledAt: "",
   isRecurring: false,
@@ -166,7 +167,25 @@ const hasWebsiteScope = (scope = {}) =>
 const getWebsiteScopeKey = (scope = {}) =>
   [scope.websiteId || "", scope.websiteSlug || "", scope.websiteName || ""].join("::");
 
-const formatAudienceLabel = (websiteLabel = "") => websiteLabel || "Select website";
+const normalizeWebsiteScopes = (scopes = []) => {
+  const source = Array.isArray(scopes) ? scopes : scopes ? [scopes] : [];
+  const unique = new Map();
+
+  source.forEach((item) => {
+    const scope = normalizeWebsiteScope(item);
+    if (!hasWebsiteScope(scope)) return;
+    unique.set(getWebsiteScopeKey(scope).toLowerCase(), scope);
+  });
+
+  return Array.from(unique.values());
+};
+
+const formatAudienceLabel = (scopes = []) => {
+  const normalizedScopes = normalizeWebsiteScopes(scopes);
+  return normalizedScopes.length
+    ? normalizedScopes.map((scope) => scope.label || scope.websiteName || scope.websiteSlug || scope.websiteId).join(", ")
+    : "Select website";
+};
 
 const stripTags = (value = "") =>
   String(value)
@@ -252,8 +271,9 @@ function CampaignFormPage() {
     new URLSearchParams(location.search).get("type") === "broadcast";
   const isBroadcastCampaign =
     form.type === "broadcast" || (!id && broadcastPreset);
-  const audienceLabel = formatAudienceLabel(normalizeWebsiteScope(form.websiteScope).label);
-  const selectedWebsiteKey = getWebsiteScopeKey(normalizeWebsiteScope(form.websiteScope));
+  const selectedWebsiteScopes = normalizeWebsiteScopes(form.websiteScopes?.length ? form.websiteScopes : form.websiteScope);
+  const audienceLabel = formatAudienceLabel(selectedWebsiteScopes);
+  const selectedWebsiteKeys = new Set(selectedWebsiteScopes.map((scope) => getWebsiteScopeKey(scope)));
   const selectedTemplate = useMemo(
     () => templates.find((template) => template._id === form.templateId),
     [form.templateId, templates],
@@ -281,7 +301,9 @@ function CampaignFormPage() {
 
         if (id) {
           const { data } = await api.get(`/campaigns/${id}`);
-          const savedWebsiteScope = normalizeWebsiteScope(data.websiteScope || data.segmentId?.websiteScope || {});
+          const savedWebsiteScopes = normalizeWebsiteScopes(
+            data.websiteScopes?.length ? data.websiteScopes : data.websiteScope || data.segmentId?.websiteScope || {},
+          );
           setForm({
             name: data.name || "",
             type: data.type || "promotional",
@@ -293,7 +315,8 @@ function CampaignFormPage() {
             replyTo: data.replyTo || "",
             templateId: data.templateId?._id || "",
             segmentId: "",
-            websiteScope: hasWebsiteScope(savedWebsiteScope) ? savedWebsiteScope : defaultWebsiteScope,
+            websiteScope: savedWebsiteScopes[0] || defaultWebsiteScope,
+            websiteScopes: savedWebsiteScopes.length ? savedWebsiteScopes : defaultWebsiteScope ? [defaultWebsiteScope] : [],
             status: data.status || "draft",
             scheduledAt: toDateTimeLocalInput(data.scheduledAt),
             isRecurring: Boolean(data.isRecurring),
@@ -306,17 +329,19 @@ function CampaignFormPage() {
             type: "broadcast",
             goal: current.goal || "clicks",
             segmentId: "",
-            websiteScope: hasWebsiteScope(normalizeWebsiteScope(current.websiteScope))
-              ? current.websiteScope
-              : defaultWebsiteScope,
+            websiteScope: normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope)[0] || defaultWebsiteScope,
+            websiteScopes: normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope).length
+              ? normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope)
+              : defaultWebsiteScope ? [defaultWebsiteScope] : [],
             isRecurring: false,
           }));
         } else {
           setForm((current) => ({
             ...current,
-            websiteScope: hasWebsiteScope(normalizeWebsiteScope(current.websiteScope))
-              ? current.websiteScope
-              : defaultWebsiteScope,
+            websiteScope: normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope)[0] || defaultWebsiteScope,
+            websiteScopes: normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope).length
+              ? normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope)
+              : defaultWebsiteScope ? [defaultWebsiteScope] : [],
           }));
         }
       } catch (requestError) {
@@ -353,8 +378,12 @@ function CampaignFormPage() {
       return "Please select a template for this campaign";
     }
 
-    if (!hasWebsiteScope(normalizeWebsiteScope(form.websiteScope))) {
-      return "Please select a website audience";
+    if (!normalizeWebsiteScopes(form.websiteScopes?.length ? form.websiteScopes : form.websiteScope).length) {
+      return "Please select at least one website audience";
+    }
+
+    if (form.isRecurring && !toIsoStringFromLocalInput(form.scheduledAt)) {
+      return "Please choose the first send time for this recurring campaign";
     }
 
     return "";
@@ -381,7 +410,8 @@ function CampaignFormPage() {
         ...form,
         status: effectiveStatus,
         segmentId: null,
-        websiteScope: normalizeWebsiteScope(form.websiteScope || {}),
+        websiteScopes: normalizeWebsiteScopes(form.websiteScopes || []),
+        websiteScope: normalizeWebsiteScopes(form.websiteScopes || [])[0] || emptyWebsiteScope,
         scheduledAt: toIsoStringFromLocalInput(form.scheduledAt) || null,
         isRecurring: Boolean(form.isRecurring),
         recurrenceInterval: Number(form.recurrenceInterval || 1),
@@ -731,29 +761,51 @@ function CampaignFormPage() {
 
             <FormField label="Audience" help={campaignHelperText.audience}>
               <div className="space-y-2">
-                <select
-                  className="field"
-                  value={selectedWebsiteKey}
-                  onChange={(event) => {
-                    const website = websites.find((item) => item.id === event.target.value);
-                    const websiteScope = website ? getWebsiteOptionScope(website) : emptyWebsiteScope;
-                    setForm((current) => ({
-                      ...current,
-                      websiteScope,
-                      segmentId: "",
-                    }));
-                  }}
-                >
-                  {websites.length ? (
-                    websites.map((website) => (
-                      <option key={website.id} value={website.id}>
-                        {website.label} ({website.count || 0})
-                      </option>
-                    ))
-                  ) : (
-                    <option value={getWebsiteScopeKey(emptyWebsiteScope)}>No websites found</option>
-                  )}
-                </select>
+                <details className="group relative">
+                  <summary className="field flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{audienceLabel}</span>
+                    <span className="text-xs text-[#8a93a6] transition group-open:rotate-180">⌄</span>
+                  </summary>
+                  <div className="absolute left-0 right-0 z-30 mt-2 max-h-56 space-y-2 overflow-y-auto border border-[#ddd4f2] bg-white p-3 shadow-[0_18px_40px_rgba(47,43,61,0.16)]">
+                    {websites.length ? (
+                      websites.map((website) => {
+                        const scope = getWebsiteOptionScope(website);
+                        const key = getWebsiteScopeKey(scope);
+                        const checked = selectedWebsiteKeys.has(key);
+
+                        return (
+                          <label key={website.id} className="flex cursor-pointer items-center justify-between gap-3 border border-[#ece6f8] bg-[#faf7ff] px-3 py-2 text-sm hover:bg-white">
+                            <span className="min-w-0">
+                              <span className="block truncate font-semibold text-[#2f2b3d]">{website.label}</span>
+                              <span className="text-xs text-[#8a93a6]">{website.count || 0} subscribers</span>
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => {
+                                setForm((current) => {
+                                  const currentScopes = normalizeWebsiteScopes(current.websiteScopes?.length ? current.websiteScopes : current.websiteScope);
+                                  const nextScopes = event.target.checked
+                                    ? normalizeWebsiteScopes([...currentScopes, scope])
+                                    : currentScopes.filter((item) => getWebsiteScopeKey(item) !== key);
+
+                                  return {
+                                    ...current,
+                                    websiteScope: nextScopes[0] || emptyWebsiteScope,
+                                    websiteScopes: nextScopes,
+                                    segmentId: "",
+                                  };
+                                });
+                              }}
+                            />
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <p className="px-3 py-2 text-sm text-[#8a93a6]">No websites found</p>
+                    )}
+                  </div>
+                </details>
               </div>
             </FormField>
 

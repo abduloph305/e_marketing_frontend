@@ -83,6 +83,7 @@ const currencyFormat = new Intl.NumberFormat("en-IN", {
 
 const formatNumber = (value = 0) => numberFormat.format(value || 0);
 const formatCurrency = (value = 0) => currencyFormat.format(value || 0);
+const ADMIN_USERS_PAGE_SIZE = 50;
 const formatPlanPrice = (value = 0, currency = "INR") =>
   new Intl.NumberFormat("en-IN", {
     currency,
@@ -255,46 +256,7 @@ function MetricDetail({ label, value, tone = "text-[#21192d]" }) {
   );
 }
 
-function UsageMeter({ label, usage = {} }) {
-  const used = usage.used || 0;
-  const limit = usage.limit || 0;
-  const remaining = usage.remaining || 0;
-  const percentage = limit ? Math.min((used / limit) * 100, 100) : 0;
-  const exhausted = usage.isExhausted || percentage >= 100;
-
-  return (
-    <div className="border border-[#eee9f8] bg-white p-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-semibold text-[#21192d]">{label}</p>
-        <p className={`text-[12px] font-semibold ${exhausted ? "text-rose-600" : "text-[#5a4380]"}`}>
-          {formatNumber(used)} / {formatNumber(limit)}
-        </p>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden bg-[#eee9f8]">
-        <div className={`h-full ${exhausted ? "bg-rose-500" : "bg-[#8338ec]"}`} style={{ width: `${percentage}%` }} />
-      </div>
-      <p className="mt-2 text-[12px] text-[#7f6f96]">{formatNumber(remaining)} remaining</p>
-    </div>
-  );
-}
-
-function RecentList({ emptyLabel, items = [], renderItem, title }) {
-  return (
-    <section className="border border-[#eee9f8] bg-white">
-      <div className="border-b border-[#eee9f8] px-4 py-3">
-        <p className="text-[13px] font-semibold text-[#21192d]">{title}</p>
-      </div>
-      <div className="divide-y divide-[#f1ecfb]">
-        {items.length ? (
-          items.slice(0, 5).map(renderItem)
-        ) : (
-          <p className="px-4 py-4 text-[12px] text-[#7f6f96]">{emptyLabel}</p>
-        )}
-      </div>
-    </section>
-  );
-}
-
+/*
 function VendorProfileModal({ isLoading, onClose, profile }) {
   const vendor = profile?.vendor || {};
   const billing = profile?.billing || {};
@@ -462,16 +424,117 @@ function VendorProfileModal({ isLoading, onClose, profile }) {
   );
 }
 
+*/
+function UsageStatTile({ label, value, hint, tone = "text-[#21192d]" }) {
+  return (
+    <div className="border border-[#eee9f8] bg-[#fbf9ff] px-4 py-4">
+      <p className="text-[11px] font-semibold uppercase text-[#9b8caf]">{label}</p>
+      <p className={`mt-2 text-[24px] font-semibold leading-none ${tone}`}>{value}</p>
+      {hint ? <p className="mt-2 text-[12px] text-[#7f6f96]">{hint}</p> : null}
+    </div>
+  );
+}
+
+function UsageProgressRow({ label, value, max, suffix = "" }) {
+  const hasLimit = Number.isFinite(max) && max > 0;
+  const percentage = hasLimit ? Math.min((value / max) * 100, 100) : 0;
+
+  return (
+    <div className="border border-[#eee9f8] bg-white px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[13px] font-semibold text-[#21192d]">{label}</p>
+        <p className="text-[12px] font-semibold text-[#5a4380]">
+          {formatNumber(value)}
+          {hasLimit ? ` / ${formatNumber(max)}` : suffix}
+        </p>
+      </div>
+      {hasLimit ? (
+        <>
+          <div className="mt-3 h-2 overflow-hidden bg-[#eee9f8]">
+            <div className="h-full bg-[#8338ec]" style={{ width: `${percentage}%` }} />
+          </div>
+          <p className="mt-2 text-[12px] text-[#7f6f96]">{Math.round(percentage)}% used</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function VendorUsagePanel({ onClose, vendor }) {
+  const deliveredRate = vendor.emailsSent ? Math.round(((vendor.delivered || 0) / vendor.emailsSent) * 100) : 0;
+  const engagementHealth =
+    vendor.bounceRate > 5 || vendor.complaintRate > 0.2 ? "Needs review" : vendor.emailsSent ? "Healthy" : "No sends yet";
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-[#21192d]/25">
+      <button type="button" className="absolute inset-0 cursor-default" onClick={onClose} aria-label="Close usage" />
+      <aside className="relative flex h-full w-full max-w-[720px] flex-col border-l border-[#ded7ef] bg-white shadow-[0_24px_64px_rgba(42,31,72,0.22)]">
+        <div className="flex items-start justify-between gap-4 border-b border-[#eee9f8] px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold uppercase text-[#9b8caf]">Vendor usage</p>
+            <h2 className="mt-1 truncate text-[21px] font-semibold text-[#21192d]">
+              {vendor.businessName || vendor.name || "Vendor"}
+            </h2>
+            <p className="mt-1 truncate text-[13px] text-[#7f6f96]">{vendor.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="border border-[#ded7ef] bg-white px-3 py-2 text-[12px] font-semibold text-[#5a4380] hover:bg-[#f5efff]"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <UsageStatTile label="Emails sent" value={formatNumber(vendor.emailsSent)} hint={`${deliveredRate}% delivered`} />
+            <UsageStatTile label="Delivered" value={formatNumber(vendor.delivered)} />
+            <UsageStatTile label="Campaigns" value={formatNumber(vendor.campaigns)} />
+            <UsageStatTile label="Automations" value={formatNumber(vendor.automations)} />
+            <UsageStatTile label="Templates" value={formatNumber(vendor.templates)} />
+            <UsageStatTile label="Segments" value={formatNumber(vendor.segments)} />
+            <UsageStatTile label="Subscribers" value={formatNumber(vendor.subscribers)} />
+            <UsageStatTile label="Bounce rate" value={`${vendor.bounceRate || 0}%`} tone="text-orange-600" />
+            <UsageStatTile label="Complaint rate" value={`${vendor.complaintRate || 0}%`} tone="text-rose-600" />
+          </section>
+
+          <section className="mt-5 border border-[#eee9f8] bg-[#fbf9ff] p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[13px] font-semibold text-[#21192d]">Usage overview</p>
+                <p className="mt-1 text-[12px] text-[#7f6f96]">Quick read of this vendor's marketing footprint.</p>
+              </div>
+              <span className="inline-flex w-fit bg-white px-3 py-1 text-[12px] font-semibold text-[#5a4380]">
+                {engagementHealth}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <UsageProgressRow label="Emails delivered" value={vendor.delivered || 0} max={vendor.emailsSent || 0} />
+              <UsageProgressRow label="Campaigns created" value={vendor.campaigns || 0} suffix=" total" />
+              <UsageProgressRow label="Automations created" value={vendor.automations || 0} suffix=" total" />
+              <UsageProgressRow label="Templates created" value={vendor.templates || 0} suffix=" total" />
+              <UsageProgressRow label="Segments created" value={vendor.segments || 0} suffix=" total" />
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function AdminUsersView({
   isLoading,
-  isProfileLoading,
-  onOpenProfile,
   openDetail,
-  profile,
+  page,
+  pageSize,
   query,
+  setPage,
   setQuery,
   setOpenDetail,
   stats,
+  total,
+  totalPages,
   vendors,
 }) {
   const toggleDetail = (vendorId, type) => {
@@ -526,7 +589,10 @@ function AdminUsersView({
             <Search className="h-4 w-4 text-[#9b8caf]" />
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setPage(1);
+                setQuery(event.target.value);
+              }}
               placeholder="Search users"
               className="w-full min-w-0 border-0 bg-transparent text-[13px] outline-none md:w-64"
             />
@@ -549,14 +615,14 @@ function AdminUsersView({
         ) : null}
 
         {vendors.length ? (
+          <>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1280px] text-left text-[13px]">
+            <table className="w-full min-w-[1180px] text-left text-[13px]">
               <thead className="bg-[#fbf9ff] text-[12px] font-semibold text-[#6e5a93]">
                 <tr>
                   <th className="px-5 py-3 font-medium">Vendor</th>
                   <th className="px-5 py-3 font-medium">SellersLogin Details</th>
                   <th className="px-5 py-3 font-medium">Contact</th>
-                  <th className="px-5 py-3 font-medium">Access</th>
                   <th className="px-5 py-3 font-medium">Marketing Usage</th>
                   <th className="px-5 py-3 font-medium">Risk</th>
                   <th className="px-5 py-3 font-medium">Last Login</th>
@@ -566,22 +632,11 @@ function AdminUsersView({
                 {vendors.map((vendor) => (
                   <tr
                     key={vendor.id}
-                    className="cursor-pointer align-top transition hover:bg-[#fbf9ff]"
-                    onClick={() => onOpenProfile(vendor)}
+                    className="align-top transition hover:bg-[#fbf9ff]"
                   >
                     <td className="px-5 py-4">
                       <p className="font-semibold text-[#21192d]">{vendor.businessName || vendor.name}</p>
                       <p className="mt-1 text-[12px] text-[#9b8caf]">{vendor.name}</p>
-                      <button
-                        type="button"
-                        className="mt-2 text-[12px] font-semibold text-[#8338ec] hover:underline"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onOpenProfile(vendor);
-                        }}
-                      >
-                        View complete profile
-                      </button>
                       <span
                         className={`mt-3 inline-flex px-2.5 py-1 text-[12px] font-semibold ${
                           vendor.accountStatus === "inactive"
@@ -608,24 +663,16 @@ function AdminUsersView({
                       <p className="mt-1 text-[12px] text-[#7f6f96]">{vendor.phone || "No phone"}</p>
                     </td>
                     <td className="px-5 py-4">
-                      <DetailMenuButton
-                        isOpen={openDetail?.vendorId === vendor.id && openDetail?.type === "access"}
-                        label="View access"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleDetail(vendor.id, "access");
-                        }}
-                      />
-                    </td>
-                    <td className="px-5 py-4 justify-center">
-                      <DetailMenuButton
-                        isOpen={openDetail?.vendorId === vendor.id && openDetail?.type === "usage"}
-                        label="View marketing usage"
+                      <button
+                        type="button"
                         onClick={(event) => {
                           event.stopPropagation();
                           toggleDetail(vendor.id, "usage");
                         }}
-                      />
+                        className="border border-[#ded7ef] bg-white px-3 py-2 text-[12px] font-semibold text-[#5a4380] hover:bg-[#f5efff]"
+                      >
+                        Usage
+                      </button>
                     </td>
                     <td className="px-5 py-4">
                       <DetailMenuButton
@@ -643,55 +690,39 @@ function AdminUsersView({
               </tbody>
             </table>
           </div>
+          <div className="flex flex-col gap-3 border-t border-[#eee9f8] px-5 py-4 text-[13px] text-[#7f6f96] md:flex-row md:items-center md:justify-between">
+            <p>
+              Showing {formatNumber((page - 1) * pageSize + 1)}-
+              {formatNumber((page - 1) * pageSize + vendors.length)} of {formatNumber(total)}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage(Math.max(page - 1, 1))}
+                className="border border-[#ded7ef] px-3 py-2 text-[12px] font-semibold text-[#5a4380] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="px-2 text-[12px] font-semibold text-[#5a4380]">
+                Page {formatNumber(page)} / {formatNumber(totalPages)}
+              </span>
+              <button
+                type="button"
+                disabled={page >= totalPages || isLoading}
+                onClick={() => setPage(Math.min(page + 1, totalPages))}
+                className="border border-[#ded7ef] px-3 py-2 text-[12px] font-semibold text-[#5a4380] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          </>
         ) : null}
       </section>
 
-      {selectedVendor && openDetail?.type === "access" ? (
-        <DetailPopover title="Access Details" onClose={() => setOpenDetail(null)}>
-          <div>
-            <p className="text-[13px] font-semibold text-[#21192d]">
-              {selectedVendor.businessName || selectedVendor.name}
-            </p>
-            <p className="mt-1 text-[12px] text-[#9b8caf]">{selectedVendor.email}</p>
-          </div>
-          <AccessSummary
-            label="Pages"
-            values={selectedVendor.sellersloginPageAccess}
-            emptyLabel={
-              selectedVendor.sellersloginAccountType === "vendor_user" ? "No page access assigned" : "Full access"
-            }
-          />
-          <AccessSummary
-            label="Websites"
-            values={selectedVendor.sellersloginWebsiteAccess}
-            emptyLabel={
-              selectedVendor.sellersloginAccountType === "vendor_user" ? "No website access assigned" : "All websites"
-            }
-          />
-          <div className="border-t border-[#eee9f8] pt-3">
-            <p className="text-[11px] font-semibold uppercase text-[#9b8caf]">Account Type</p>
-            <p className="mt-1 text-[13px] font-semibold text-[#21192d]">
-              {selectedVendor.sellersloginAccountType || "vendor_owner"}
-            </p>
-          </div>
-        </DetailPopover>
-      ) : null}
-
       {selectedVendor && openDetail?.type === "usage" ? (
-        <DetailPopover title="Marketing Usage" onClose={() => setOpenDetail(null)}>
-          <div>
-            <p className="text-[13px] font-semibold text-[#21192d]">
-              {selectedVendor.businessName || selectedVendor.name}
-            </p>
-            <p className="mt-1 text-[12px] text-[#9b8caf]">{selectedVendor.email}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <MetricDetail label="Subscribers" value={formatNumber(selectedVendor.subscribers)} />
-            <MetricDetail label="Campaigns" value={formatNumber(selectedVendor.campaigns)} />
-            <MetricDetail label="Sent" value={formatNumber(selectedVendor.emailsSent)} />
-            <MetricDetail label="Delivered" value={formatNumber(selectedVendor.delivered)} />
-          </div>
-        </DetailPopover>
+        <VendorUsagePanel vendor={selectedVendor} onClose={() => setOpenDetail(null)} />
       ) : null}
 
       {selectedVendor && openDetail?.type === "risk" ? (
@@ -715,13 +746,6 @@ function AdminUsersView({
         </DetailPopover>
       ) : null}
 
-      {profile || isProfileLoading ? (
-        <VendorProfileModal
-          isLoading={isProfileLoading}
-          onClose={() => onOpenProfile(null)}
-          profile={profile}
-        />
-      ) : null}
     </div>
   );
 }
@@ -1200,6 +1224,27 @@ const formatActivityDateGroup = (value) => {
   }).format(date);
 };
 
+const toDateInputValue = (date = new Date()) => {
+  const value = date instanceof Date ? date : new Date(date);
+
+  if (Number.isNaN(value.getTime())) {
+    return "";
+  }
+
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isSameLocalDate = (value, dateInputValue) => {
+  if (!value || !dateInputValue) {
+    return false;
+  }
+
+  return toDateInputValue(new Date(value)) === dateInputValue;
+};
+
 const getVendorActivityKey = (item = {}) =>
   item.vendor?.id || item.vendor?.vendorId || item.actor?.email || item.vendor?.email || "unknown";
 
@@ -1215,6 +1260,8 @@ function AdminVendorActivityView({
   stats,
 }) {
   const [selectedVendorKey, setSelectedVendorKey] = useState("");
+  const [vendorActivityDateFilter, setVendorActivityDateFilter] = useState("today");
+  const [vendorActivityCustomDate, setVendorActivityCustomDate] = useState(toDateInputValue());
   const moduleOptions = [
     ["all", "All activity"],
     ["login", "Login"],
@@ -1260,7 +1307,25 @@ function AdminVendorActivityView({
   }, [activities]);
   const selectedVendor = vendorRows.find((row) => row.key === selectedVendorKey) || null;
   const selectedActivities = selectedVendor?.activities || [];
-  const groupedActivities = selectedActivities.reduce((groups, item) => {
+  const filteredSelectedActivities = useMemo(() => {
+    if (!selectedActivities.length) {
+      return [];
+    }
+
+    const todayValue = toDateInputValue();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayValue = toDateInputValue(yesterday);
+    const selectedDate =
+      vendorActivityDateFilter === "yesterday"
+        ? yesterdayValue
+        : vendorActivityDateFilter === "custom"
+          ? vendorActivityCustomDate
+          : todayValue;
+
+    return selectedActivities.filter((item) => isSameLocalDate(item.timestamp, selectedDate));
+  }, [selectedActivities, vendorActivityCustomDate, vendorActivityDateFilter]);
+  const groupedActivities = filteredSelectedActivities.reduce((groups, item) => {
     const label = formatActivityDateGroup(item.timestamp);
     groups[label] = groups[label] || [];
     groups[label].push(item);
@@ -1410,9 +1475,26 @@ function AdminVendorActivityView({
                   {selectedVendor.vendor?.email || selectedVendor.actor?.email || selectedVendor.vendor?.vendorId}
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  value={vendorActivityDateFilter}
+                  onChange={(event) => setVendorActivityDateFilter(event.target.value)}
+                  className="h-9 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+                >
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
+                  <option value="custom">Custom date</option>
+                </select>
+                {vendorActivityDateFilter === "custom" ? (
+                  <input
+                    type="date"
+                    value={vendorActivityCustomDate}
+                    onChange={(event) => setVendorActivityCustomDate(event.target.value)}
+                    className="h-9 border border-[#ded7ef] bg-white px-3 text-[13px] font-semibold text-[#5a4380] outline-none"
+                  />
+                ) : null}
                 <span className="bg-[#f5efff] px-3 py-1.5 text-[12px] font-semibold text-[#5a4380]">
-                  {formatNumber(selectedActivities.length)} activities
+                  {formatNumber(filteredSelectedActivities.length)} activities
                 </span>
                 <button
                   type="button"
@@ -1424,7 +1506,8 @@ function AdminVendorActivityView({
               </div>
             </div>
             <div className="max-h-[calc(88vh-105px)] overflow-y-auto p-5">
-              {Object.entries(groupedActivities).map(([dateLabel, items]) => (
+              {filteredSelectedActivities.length ? (
+              Object.entries(groupedActivities).map(([dateLabel, items]) => (
                 <div key={dateLabel} className="mb-6 last:mb-0">
                   <div className="mb-3 flex items-center gap-3">
                     <p className="text-[13px] font-semibold text-[#21192d]">{dateLabel}</p>
@@ -1485,7 +1568,15 @@ function AdminVendorActivityView({
                     })}
                   </div>
                 </div>
-              ))}
+              ))
+              ) : (
+                <div className="border border-[#eee9f8] bg-[#fbf9ff] p-8 text-center">
+                  <p className="text-[15px] font-semibold text-[#21192d]">No activity found</p>
+                  <p className="mt-2 text-[13px] text-[#7f6f96]">
+                    No activity is available for the selected date.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
         </div>
@@ -2476,6 +2567,13 @@ function AdminDashboardPage() {
   const toast = useContext(ToastContext);
   const [overview, setOverview] = useState(null);
   const [adminUsers, setAdminUsers] = useState([]);
+  const [adminUsersMeta, setAdminUsersMeta] = useState({
+    limit: ADMIN_USERS_PAGE_SIZE,
+    page: 1,
+    total: 0,
+    totalPages: 1,
+  });
+  const [adminUsersServerStats, setAdminUsersServerStats] = useState(null);
   const [activityOverview, setActivityOverview] = useState({ activities: [], stats: {} });
   const [billingData, setBillingData] = useState({
     creditPacks: [],
@@ -2495,6 +2593,7 @@ function AdminDashboardPage() {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [usersQuery, setUsersQuery] = useState("");
+  const [usersPage, setUsersPage] = useState(1);
   const [riskQuery, setRiskQuery] = useState("");
   const [activityQuery, setActivityQuery] = useState("");
   const [activityType, setActivityType] = useState("all");
@@ -2507,8 +2606,6 @@ function AdminDashboardPage() {
   const [creditPackForm, setCreditPackForm] = useState(emptyCreditPackForm);
   const [paygSettings, setPaygSettings] = useState({});
   const [openDetail, setOpenDetail] = useState(null);
-  const [vendorProfile, setVendorProfile] = useState(null);
-  const [isVendorProfileLoading, setIsVendorProfileLoading] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [openSections, setOpenSections] = useState(() =>
     navSections.reduce((acc, section) => {
@@ -2539,11 +2636,24 @@ function AdminDashboardPage() {
     }
   };
 
-  const loadAdminUsers = async () => {
+  const loadAdminUsers = async ({ page = usersPage, search = usersQuery } = {}) => {
     setIsUsersLoading(true);
     try {
-      const { data } = await api.get("/admin-dashboard/vendors");
+      const { data } = await api.get("/admin-dashboard/vendors", {
+        params: {
+          limit: ADMIN_USERS_PAGE_SIZE,
+          page,
+          search,
+        },
+      });
       setAdminUsers(data.vendors || []);
+      setAdminUsersMeta(data.pagination || {
+        limit: ADMIN_USERS_PAGE_SIZE,
+        page,
+        total: data.vendors?.length || 0,
+        totalPages: 1,
+      });
+      setAdminUsersServerStats(data.stats || null);
     } catch (error) {
       toast.error(error.response?.data?.message || "Unable to load users");
     } finally {
@@ -2608,7 +2718,6 @@ function AdminDashboardPage() {
   useEffect(() => {
     loadOverview();
     loadNotifications();
-    loadAdminUsers();
     loadUserActivity();
     loadBilling();
 
@@ -2616,6 +2725,14 @@ function AdminDashboardPage() {
 
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadAdminUsers({ page: usersPage, search: usersQuery });
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [usersPage, usersQuery]);
 
   const vendors = useMemo(() => {
     const list = overview?.vendors || [];
@@ -2633,26 +2750,8 @@ function AdminDashboardPage() {
   }, [overview?.vendors, query]);
 
   const filteredAdminUsers = useMemo(() => {
-    const normalizedQuery = usersQuery.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return adminUsers;
-    }
-
-    return adminUsers.filter((vendor) =>
-      [
-        vendor.name,
-        vendor.email,
-        vendor.phone,
-        vendor.businessName,
-        vendor.sellersloginVendorId,
-        vendor.sellersloginAccountType,
-        vendor.accountStatus,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(normalizedQuery)),
-    );
-  }, [adminUsers, usersQuery]);
+    return adminUsers;
+  }, [adminUsers]);
 
   const filteredRiskVendors = useMemo(() => {
     const normalizedQuery = riskQuery.trim().toLowerCase();
@@ -2675,17 +2774,20 @@ function AdminDashboardPage() {
     );
   }, [adminUsers, riskQuery]);
 
-  const adminUserStats = useMemo(
-    () => ({
+  const adminUserStats = useMemo(() => {
+    if (adminUsersServerStats) {
+      return adminUsersServerStats;
+    }
+
+    return {
       active: adminUsers.filter((vendor) => vendor.accountStatus !== "inactive").length,
       campaigns: adminUsers.reduce((sum, vendor) => sum + (vendor.campaigns || 0), 0),
       emailsSent: adminUsers.reduce((sum, vendor) => sum + (vendor.emailsSent || 0), 0),
       subscribers: adminUsers.reduce((sum, vendor) => sum + (vendor.subscribers || 0), 0),
       suspended: adminUsers.filter((vendor) => vendor.accountStatus === "inactive").length,
       total: adminUsers.length,
-    }),
-    [adminUsers],
-  );
+    };
+  }, [adminUsers, adminUsersServerStats]);
 
   const filteredActivities = useMemo(() => {
     const normalizedQuery = activityQuery.trim().toLowerCase();
@@ -2753,28 +2855,6 @@ function AdminDashboardPage() {
       toast.error(error.response?.data?.message || "Unable to update vendor");
     } finally {
       setUpdatingVendorId("");
-    }
-  };
-
-  const openVendorProfile = async (vendor) => {
-    if (!vendor) {
-      setVendorProfile(null);
-      setIsVendorProfileLoading(false);
-      return;
-    }
-
-    setOpenDetail(null);
-    setVendorProfile(null);
-    setIsVendorProfileLoading(true);
-
-    try {
-      const { data } = await api.get(`/admin-dashboard/vendors/${vendor.id}/profile`);
-      setVendorProfile(data);
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Unable to load vendor profile");
-      setVendorProfile(null);
-    } finally {
-      setIsVendorProfileLoading(false);
     }
   };
 
@@ -3248,14 +3328,16 @@ function AdminDashboardPage() {
           {activeView === "users" ? (
             <AdminUsersView
               isLoading={isUsersLoading}
-              isProfileLoading={isVendorProfileLoading}
-              onOpenProfile={openVendorProfile}
               openDetail={openDetail}
-              profile={vendorProfile}
+              page={adminUsersMeta.page}
+              pageSize={adminUsersMeta.limit}
               query={usersQuery}
+              setPage={setUsersPage}
               setQuery={setUsersQuery}
               setOpenDetail={setOpenDetail}
               stats={adminUserStats}
+              total={adminUsersMeta.total}
+              totalPages={adminUsersMeta.totalPages}
               vendors={filteredAdminUsers}
             />
           ) : activeView === "activity" ? (
